@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { Box, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Dialog, DialogTitle, DialogContent, TextField, Button, Typography, FormControl, Select, MenuItem, InputAdornment, Chip } from '@mui/material';
-import { FilterList as FilterIcon } from '@mui/icons-material';
+import { Box, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Dialog, DialogTitle, DialogContent, TextField, Button, Typography, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import { addMonths, format, isAfter, isBefore, isWithinInterval, startOfMonth, endOfMonth } from 'date-fns';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getResources, getPositions, createAllocation, getAllocations, deleteAllocation } from '../services/staloService';
@@ -21,7 +20,7 @@ interface MonthlyAllocationDialog {
 
 export default function Home({ selectedDate }: HomeProps) {
   const queryClient = useQueryClient();
-  const months = Array.from({ length: 12 }, (_, i) => addMonths(selectedDate, i));
+  const months = Array.from({ length: 9 }, (_, i) => addMonths(selectedDate, i));
 
   // Display mode state: 'percentage' or 'days'
   const [displayMode, setDisplayMode] = useState<'percentage' | 'days'>('percentage');
@@ -84,20 +83,20 @@ export default function Home({ selectedDate }: HomeProps) {
     if (displayMode === 'days') {
       // Days mode thresholds (18-22 days = optimal, 20 days = 100% equivalent)
       if (displayValue >= 18 && displayValue <= 22) {
-        return '#4caf50'; // green
+        return '#4caf50'; // professional green
       } else if (displayValue < 18) {
-        return '#ffeb3b'; // pale yellow
+        return '#ffb300'; // golden yellow
       } else {
-        return '#ffcdd2'; // pale red
+        return '#f44336'; // professional red
       }
     } else {
       // Percentage mode thresholds (90-110% = optimal)
       if (displayValue >= 90 && displayValue <= 110) {
-        return '#4caf50'; // green
+        return '#4caf50'; // professional green
       } else if (displayValue < 90) {
-        return '#ffeb3b'; // pale yellow
+        return '#ffb300'; // golden yellow
       } else {
-        return '#ffcdd2'; // pale red
+        return '#f44336'; // professional red
       }
     }
   };
@@ -225,13 +224,25 @@ export default function Home({ selectedDate }: HomeProps) {
 
   // Handle position selection
   const handlePositionSelect = (position: Position) => {
+    // Always convert LoE to percentage for database storage
+    let percentageLoE = position.LoE;
+    const normalizedMode = position?.AllocationMode?.toLowerCase()?.trim();
+    const isDaysMode = normalizedMode === 'days' || normalizedMode === 'day';
+    
+    // If position is in days mode, convert to percentage (20 days = 100%)
+    if (isDaysMode) {
+      percentageLoE = Math.round((position.LoE / 20) * 100);
+    }
+    // If position is already in percentage mode, use as-is
+    // No conversion needed
+
     setAllocationData({
       ProjectName: position.ProjectName || '',
       ResourceName: allocationData.ResourceName,
       PositionName: position.PositionName,
       MonthYear: position.MonthYear, // Use the position's actual MonthYear
-      AllocationMode: position.AllocationMode,
-      LoE: position.LoE,
+      AllocationMode: '%', // Always save as percentage mode
+      LoE: percentageLoE, // Always save as percentage value
     });
   };
 
@@ -256,16 +267,23 @@ export default function Home({ selectedDate }: HomeProps) {
     
     const resourceStart = new Date(resource.StartDate);
     const resourceEnd = resource.EndDate ? new Date(resource.EndDate) : null;
-    const tableStart = startOfMonth(months[0]); // First month in table
-    const tableEnd = endOfMonth(months[months.length - 1]); // Last month in table
 
-    // Check if resource period overlaps with table period
-    // If no end date, check if resource starts before or during table period
-    return (
-      isWithinInterval(resourceStart, { start: tableStart, end: tableEnd }) ||
-      (resourceEnd && isWithinInterval(resourceEnd, { start: tableStart, end: tableEnd })) ||
-      (isBefore(resourceStart, tableStart) && (!resourceEnd || isAfter(resourceEnd || new Date('2099-12-31'), tableEnd)))
-    );
+    // Check if at least one month in the table falls within the resource's Start/End range (inclusive)
+    for (const month of months) {
+      const monthStart = startOfMonth(month);
+      const monthEnd = endOfMonth(month);
+      
+      // Check if this month is within the resource's active period
+      const isMonthInRange = isWithinInterval(monthStart, { start: resourceStart, end: resourceEnd || new Date('2099-12-31') }) ||
+                             isWithinInterval(monthEnd, { start: resourceStart, end: resourceEnd || new Date('2099-12-31') }) ||
+                             (isBefore(resourceStart, monthStart) && (!resourceEnd || isAfter(resourceEnd || new Date('2099-12-31'), monthEnd)));
+      
+      if (isMonthInRange) {
+        return true; // Resource should appear if at least one month is in range
+      }
+    }
+    
+    return false; // Don't show resource if no months are in range
   });
 
   // Group filtered resources by department
@@ -292,78 +310,159 @@ export default function Home({ selectedDate }: HomeProps) {
   });
 
   return (
-    <Box sx={{ p: 4 }}>
+    <Box sx={{ px: 0, py: 2 }}>
       {/* Filter Controls */}
-      <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="h6" component="h2">
+      <Box sx={{ 
+        mb: 2, 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center',
+        backgroundColor: 'white',
+        p: 2,
+        borderRadius: 1,
+        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+        border: '1px solid rgba(0, 0, 0, 0.12)'
+      }}>
+        <Typography variant="h6" component="h2" sx={{ fontWeight: 600, color: '#1f2937' }}>
           Resource Allocation Table
         </Typography>
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-          <FormControl size="small" sx={{ minWidth: 150 }}>
-            <Select
-              value={displayMode}
-              onChange={(e) => setDisplayMode(e.target.value as 'percentage' | 'days')}
-              startAdornment={
-                <InputAdornment position="start">
-                  <FilterIcon />
-                </InputAdornment>
-              }
-            >
-              <MenuItem value="percentage">Show as %</MenuItem>
-              <MenuItem value="days">Show as Days</MenuItem>
-            </Select>
-          </FormControl>
-          <Chip 
-            label={`${displayMode === 'percentage' ? 'Percentage' : 'Days'} View`} 
-            color="primary" 
-            variant="outlined" 
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <ToggleButtonGroup
+            value={displayMode}
+            exclusive
+            onChange={(_: React.MouseEvent<HTMLElement>, value: 'percentage' | 'days' | null) => value && setDisplayMode(value)}
             size="small"
-          />
+            sx={{
+              '& .MuiToggleButton-root': {
+                px: 3,
+                py: 1,
+                fontSize: '0.875rem',
+                fontWeight: 500,
+                border: '1px solid rgba(0, 0, 0, 0.23)',
+                '&:not(:first-of-type)': {
+                  borderRadius: '0 4px 4px 0',
+                },
+                '&:first-of-type': {
+                  borderRadius: '4px 0 0 4px',
+                },
+                '&.Mui-selected': {
+                  backgroundColor: '#3b82f6',
+                  color: 'white',
+                  '&:hover': {
+                    backgroundColor: '#2563eb',
+                  },
+                },
+                '&:not(.Mui-selected)': {
+                  backgroundColor: 'white',
+                  color: '#374151',
+                  '&:hover': {
+                    backgroundColor: '#f3f4f6',
+                  },
+                },
+              },
+            }}
+          >
+            <ToggleButton value="percentage">
+              %
+            </ToggleButton>
+            <ToggleButton value="days">
+              Days
+            </ToggleButton>
+          </ToggleButtonGroup>
         </Box>
       </Box>
 
-      <TableContainer component={Paper} sx={{ mt: 2 }}>
-        <Table size="small">
-          <TableHead>
+      <TableContainer component={Paper} sx={{ 
+        mt: 1, 
+        maxWidth: 'none', 
+        width: '100%', 
+        ml: 0, 
+        mr: 0, 
+        pl: 0, 
+        pr: 0,
+        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+        borderRadius: 1,
+        border: '1px solid rgba(0, 0, 0, 0.12)'
+      }}>
+        <Table size="small" sx={{ width: '100%', tableLayout: 'fixed' }}>
+          <TableHead sx={{ backgroundColor: '#f9fafb' }}>
             <TableRow>
-              <TableCell sx={{ width: '200px', minWidth: '200px' }}><strong>Name</strong></TableCell>
+              <TableCell sx={{ 
+                width: '200px', 
+                minWidth: '200px',
+                backgroundColor: '#f3f4f6',
+                fontWeight: 600,
+                color: '#374151',
+                border: '1px solid rgba(0, 0, 0, 0.12)',
+                fontSize: '0.875rem'
+              }}>
+                Name
+              </TableCell>
               {months.map((m, idx) => (
                 <TableCell 
                   key={idx} 
                   align="center" 
                   sx={{ 
-                    width: '100px', 
-                    minWidth: '100px',
+                    width: '120px', 
+                    minWidth: '120px',
                     cursor: 'pointer',
-                    '&:hover': { backgroundColor: 'action.hover' },
+                    backgroundColor: '#f3f4f6',
+                    fontWeight: 600,
+                    color: '#374151',
+                    border: '1px solid rgba(0, 0, 0, 0.12)',
+                    fontSize: '0.875rem',
+                    '&:hover': { backgroundColor: '#e5e7eb' },
                     textDecoration: 'underline'
                   }}
                   onClick={() => handleMonthClick(idx)}
                 >
-                  <strong>{format(m, 'MMM yyyy')}</strong>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {format(m, 'MMM yyyy')}
+                    </Typography>
+                  </Box>
                 </TableCell>
               ))}
             </TableRow>
             
             {/* Unallocated positions row */}
             <TableRow>
-              <TableCell component="th" scope="row" sx={{ width: '200px', minWidth: '200px' }}><strong>Unallocated</strong></TableCell>
+              <TableCell sx={{ 
+                width: '200px', 
+                minWidth: '200px',
+                backgroundColor: '#f9fafb',
+                fontWeight: 600,
+                color: '#6b7280',
+                border: '1px solid rgba(0, 0, 0, 0.12)',
+                fontSize: '0.75rem'
+              }}>
+                Unallocated
+              </TableCell>
               {months.map((_, i) => (
-                <TableCell key={i} align="center" sx={{ p: 0.25, width: '100px', minWidth: '100px' }}>
+                <TableCell key={i} align="center" sx={{ 
+                  p: 0.5, 
+                  width: '120px', 
+                  minWidth: '120px',
+                  backgroundColor: '#f9fafb',
+                  border: '1px solid rgba(0, 0, 0, 0.12)',
+                  verticalAlign: 'top'
+                }}>
                   {unallocatedPositionsByMonth[i].length > 0 ? (
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.2, maxHeight: '100px', overflowY: 'auto' }}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, maxHeight: '120px', overflowY: 'auto' }}>
                       {unallocatedPositionsByMonth[i].map((position) => (
                         <Box 
                           key={position.ID} 
                           sx={{ 
-                            backgroundColor: '#e3f2fd',
-                            p: 0.3,
+                            backgroundColor: '#dbeafe',
+                            p: 0.5,
                             borderRadius: 0.5,
-                            fontSize: '0.65rem',
-                            fontWeight: 'bold',
-                            lineHeight: 1.1,
+                            fontSize: '0.60rem',
+                            fontWeight: 'normal',
+                            lineHeight: 1.2,
                             whiteSpace: 'normal',
-                            wordBreak: 'break-word'
+                            wordBreak: 'break-word',
+                            border: '1px solid #93c5fd',
+                            color: '#1e40af'
                           }}
                         >
                           {position.ProjectName} - {position.PositionName} - {formatValue(position.LoE, position.AllocationMode || '%')}
@@ -371,7 +470,9 @@ export default function Home({ selectedDate }: HomeProps) {
                       ))}
                     </Box>
                   ) : (
-                    '-'
+                    <Typography variant="body2" sx={{ color: '#9ca3af', fontSize: '0.75rem' }}>
+                      -
+                    </Typography>
                   )}
                 </TableCell>
               ))}
@@ -383,12 +484,13 @@ export default function Home({ selectedDate }: HomeProps) {
                 {/* Department header row */}
                 <TableRow>
                   <TableCell 
-                    colSpan={13} 
+                    colSpan={10} 
                     sx={{ 
                       backgroundColor: 'grey.100', 
                       fontWeight: 'bold',
-                      fontSize: '0.9rem',
-                      p: 1
+                      fontSize: '0.75rem',
+                      p: 0.5,
+                      height: '24px'
                     }}
                   >
                     {department}
@@ -398,7 +500,7 @@ export default function Home({ selectedDate }: HomeProps) {
                 {/* Resources in this department */}
                 {departmentResources.map((resource) => (
                   <TableRow key={resource.ID} hover>
-                    <TableCell component="th" scope="row" sx={{ pl: 3, width: '200px', minWidth: '200px', fontSize: '0.8rem' }}>
+                    <TableCell component="th" scope="row" sx={{ pl: 2, pr: 1, py: 0.25, width: '200px', minWidth: '200px', fontSize: '0.8rem' }}>
                       {resource.Name}
                     </TableCell>
                     {months.map((month, i) => {
@@ -422,20 +524,52 @@ export default function Home({ selectedDate }: HomeProps) {
                             cursor: isActive ? 'pointer' : 'default',
                             backgroundColor: isActive ? 'action.hover' : 'inherit',
                             '&:hover': isActive ? { backgroundColor: 'action.selected' } : {},
-                            p: 0.15, // Further reduce padding
+                            p: 0.5,
                             width: '100px',
                             minWidth: '100px',
-                            height: '16px', // Reduce height from 20px to 16px
+                            height: '16px',
                             position: 'relative',
-                            overflow: 'hidden'
+                            overflow: 'hidden',
+                            border: '1px solid white'
                           }}
                         >
                           {(() => {
-                            // Check if there are allocations for this resource and month
-                            const month = months[i];
-                            const monthStart = startOfMonth(month);
-                            const monthEnd = endOfMonth(month);
+                            // Start Date and End Date checks
+                            const resourceStart = new Date(resource.StartDate);
+                            const resourceEnd = resource.EndDate ? new Date(resource.EndDate) : null;
                             
+                            // Check if month is before resource's Start Date
+                            const isBeforeStart = isBefore(monthEnd, resourceStart);
+                            
+                            // Check if month is after resource's End Date
+                            const isAfterEnd = resourceEnd && isAfter(monthStart, resourceEnd);
+                            
+                            // Check if resource is active during this month
+                            const isActive = !isBeforeStart && !isAfterEnd;
+                            
+                            // Display "Not Started" if month is before start date
+                            if (isBeforeStart) {
+                              return (
+                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                                  <Typography variant="caption" sx={{ fontSize: '0.6rem', color: 'text.secondary' }}>
+                                    Not Started
+                                  </Typography>
+                                </Box>
+                              );
+                            }
+                            
+                            // Display "Ended" if month is after end date
+                            if (isAfterEnd) {
+                              return (
+                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                                  <Typography variant="caption" sx={{ fontSize: '0.6rem', color: 'text.secondary' }}>
+                                    Ended
+                                  </Typography>
+                                </Box>
+                              );
+                            }
+                            
+                            // Check if there are allocations for this resource and month
                             const cellAllocations = allocations.filter(a => 
                               a.ResourceID === resource.ID &&
                               (() => {
@@ -445,33 +579,21 @@ export default function Home({ selectedDate }: HomeProps) {
                             );
                             
                             if (cellAllocations.length > 0) {
-                              // Calculate total in the selected display mode (always convert everything)
-                              let totalDisplayValue = 0;
+                              // Calculate total allocation - everything is stored as percentage
+                              let totalPercentage = 0;
                               
-                              // Always convert all allocations to the selected display mode
+                              // Sum all allocations (all stored as percentage)
                               cellAllocations.forEach(allocation => {
-                                const position = positions.find(p => p.ID === allocation.PositionID);
-                                const normalizedMode = position?.AllocationMode?.toLowerCase()?.trim();
-                                const isDaysMode = normalizedMode === 'days' || normalizedMode === 'day';
-                                
-                                if (displayMode === 'days') {
-                                  // Convert everything to days
-                                  if (isDaysMode) {
-                                    totalDisplayValue += allocation.LoE; // Already in days
-                                  } else {
-                                    totalDisplayValue += percentageToDays(allocation.LoE); // Convert % to days
-                                  }
-                                } else {
-                                  // Convert everything to percentage
-                                  if (isDaysMode) {
-                                    totalDisplayValue += Math.round((allocation.LoE / 20) * 100); // Convert days to %
-                                  } else {
-                                    totalDisplayValue += allocation.LoE; // Already in %
-                                  }
-                                }
+                                totalPercentage += allocation.LoE; // All allocations are now stored as %
                               });
                               
-                              const backgroundColor = getBackgroundColor(totalDisplayValue, displayMode === 'days' ? 'days' : '%');
+                              // Calculate display value based on display mode
+                              let displayValue = totalPercentage;
+                              if (displayMode === 'days') {
+                                displayValue = totalPercentage * 20 / 100; // Convert % to days
+                              }
+                              
+                              const backgroundColor = getBackgroundColor(displayValue, displayMode === 'days' ? 'days' : '%');
                               
                               return (
                                 <Box 
@@ -482,11 +604,10 @@ export default function Home({ selectedDate }: HomeProps) {
                                     width: '100%',
                                     height: '100%',
                                     backgroundColor: 'rgba(0,0,0,0.1)',
-                                    borderRadius: 0.5,
+                                    borderRadius: 1,
                                     overflow: 'hidden',
                                     display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center'
+                                    alignItems: 'center'
                                   }}
                                 >
                                   <Box
@@ -495,64 +616,43 @@ export default function Home({ selectedDate }: HomeProps) {
                                       top: 0,
                                       left: 0,
                                       height: '100%',
-                                      width: `${displayMode === 'days' 
-    ? Math.min(100, Math.max(0, (totalDisplayValue / 20) * 100)) 
-    : Math.min(100, Math.max(0, totalDisplayValue))}%`,
+                                      width: `${Math.min(100, Math.max(0, totalPercentage))}%`,
                                       backgroundColor,
                                       transition: 'width 0.3s ease',
-                                      zIndex: 0
-                                    }}
-                                  />
-                                  <Typography 
-                                    variant="caption" 
-                                    sx={{ 
-                                      position: 'relative',
-                                      fontSize: '0.5rem', // Increase from 0.45rem to 0.5rem
-                                      fontWeight: 'bold',
-                                      color: totalDisplayValue > (displayMode === 'days' ? 10 : 50) ? 'white' : 'text.primary',
-                                      textShadow: totalDisplayValue > (displayMode === 'days' ? 10 : 50) ? '1px 1px 1px rgba(0,0,0,0.8)' : 'none',
-                                      zIndex: 1,
-                                      lineHeight: 1
+                                      zIndex: 0,
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      borderRadius: 1
                                     }}
                                   >
-                                    {displayMode === 'days' ? `${totalDisplayValue}d` : `${totalDisplayValue}%`}
-                                  </Typography>
+                                    <Typography 
+                                      variant="caption" 
+                                      sx={{ 
+                                        fontSize: '0.5rem',
+                                        fontWeight: 'bold',
+                                        color: 'black',
+                                        lineHeight: 1,
+                                        position: 'relative',
+                                        zIndex: 1
+                                      }}
+                                    >
+                                      {displayMode === 'days' ? `${displayValue}d` : `${displayValue}%`}
+                                    </Typography>
+                                  </Box>
                                 </Box>
                               );
                             } else if (isActive) {
                               return (
-                                <Box 
-                                  sx={{ 
-                                    position: 'absolute',
-                                    top: 0,
-                                    left: 0,
-                                    width: '100%',
-                                    height: '100%',
-                                    backgroundColor: 'rgba(0,0,0,0.05)',
-                                    borderRadius: 0.5,
-                                    overflow: 'hidden',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center'
-                                  }}
-                                >
-                                  <Typography 
-                                    variant="caption" 
-                                    sx={{ 
-                                      position: 'relative',
-                                      fontSize: '0.5rem', // Match the allocation cell font size
-                                      color: 'text.secondary',
-                                      zIndex: 1,
-                                      lineHeight: 1
-                                    }}
-                                  >
+                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                                  <Typography variant="caption" sx={{ fontSize: '0.5rem', color: 'text.secondary' }}>
                                     {displayMode === 'days' ? '0d' : '0%'}
                                   </Typography>
                                 </Box>
                               );
-                            } else {
-                              return '-';
                             }
+                            
+                            return null;
                           })()}
                         </TableCell>
                       );
@@ -564,7 +664,7 @@ export default function Home({ selectedDate }: HomeProps) {
 
             {Object.keys(resourcesByDepartment).length === 0 && !isLoading && (
               <TableRow>
-                <TableCell colSpan={13} align="center">No resources found for the displayed period</TableCell>
+                <TableCell colSpan={10} align="center">No resources found for the displayed period</TableCell>
               </TableRow>
             )}
           </TableBody>
@@ -614,15 +714,8 @@ export default function Home({ selectedDate }: HomeProps) {
             <TextField
               label="LoE"
               value={(() => {
-                const position = positions.find(p => p.PositionName === allocationData.PositionName);
-                const normalizedMode = position?.AllocationMode?.toLowerCase()?.trim();
-                const isDaysMode = normalizedMode === 'days' || normalizedMode === 'day';
-                
-                if (isDaysMode) {
-                  return `${allocationData.LoE} days${displayMode === 'percentage' ? ` (${Math.round((allocationData.LoE / 20) * 100)}%)` : ''}`;
-                } else {
-                  return `${allocationData.LoE}%${displayMode === 'days' ? ` (${percentageToDays(allocationData.LoE)} days)` : ''}`;
-                }
+                // Always display as percentage since we store as percentage
+                return `${allocationData.LoE}%${displayMode === 'days' ? ` (${percentageToDays(allocationData.LoE)} days)` : ''}`;
               })()}
               fullWidth
               disabled
@@ -649,42 +742,89 @@ export default function Home({ selectedDate }: HomeProps) {
                       Existing Allocations for {allocationDialog.monthYear}
                     </Typography>
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                      {existingAllocations.map((allocation) => (
-                        <Box 
-                          key={allocation.ID} 
-                          sx={{ 
-                            p: 1.5, 
-                            border: 1, 
-                            borderColor: 'divider', 
-                            borderRadius: 1,
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center'
-                          }}
-                        >
-                          <Box>
-                            <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
-                              {allocation.PositionName}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              LoE: {(() => {
-                                const position = positions.find(p => p.ID === allocation.PositionID);
-                                const normalizedMode = position?.AllocationMode?.toLowerCase()?.trim();
-                                const isDaysMode = normalizedMode === 'days' || normalizedMode === 'day';
-                                return formatValue(allocation.LoE, isDaysMode ? 'days' : '%');
-                              })()} • {allocation.AllocationMode}
-                            </Typography>
-                          </Box>
-                          <Button 
-                            size="small" 
-                            variant="outlined" 
-                            color="error"
-                            onClick={() => deleteAllocationMutation.mutate(allocation.ID)}
+                      {existingAllocations.map((allocation) => {
+                        // Use project and position names directly from allocation (joined from backend)
+                        const projectName = allocation.ProjectName || 'Unknown Project';
+                        const positionName = allocation.PositionName || 'Unknown Position';
+                        
+                        // Calculate display value (everything stored as percentage)
+                        let displayValue = allocation.LoE;
+                        if (displayMode === 'days') {
+                          displayValue = allocation.LoE * 20 / 100; // Convert % to days
+                        }
+                        
+                        // Get background color
+                        const backgroundColor = getBackgroundColor(displayValue, displayMode === 'days' ? 'days' : '%');
+                        
+                        return (
+                          <Box 
+                            key={allocation.ID} 
+                            sx={{ 
+                              p: 0.5, 
+                              border: 1, 
+                              borderColor: 'divider', 
+                              borderRadius: 0.5,
+                              backgroundColor: 'grey.50'
+                            }}
                           >
-                            Remove
-                          </Button>
-                        </Box>
-                      ))}
+                            {/* Compact Allocation Bar with Project and Position Name */}
+                            <Box 
+                              sx={{ 
+                                position: 'relative',
+                                height: '16px',
+                                backgroundColor: 'rgba(0,0,0,0.1)',
+                                borderRadius: 0.5,
+                                overflow: 'hidden',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                mb: 0.25
+                              }}
+                            >
+                              <Box
+                                sx={{
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  height: '100%',
+                                  width: `${Math.min(100, Math.max(0, allocation.LoE))}%`,
+                                  backgroundColor,
+                                  transition: 'width 0.3s ease',
+                                  zIndex: 0
+                                }}
+                              />
+                              <Typography 
+                                variant="caption" 
+                                sx={{ 
+                                  fontSize: '0.5rem',
+                                  fontWeight: 'bold',
+                                  color: 'text.primary',
+                                  lineHeight: 1,
+                                  position: 'relative',
+                                  zIndex: 1,
+                                  textAlign: 'center',
+                                  px: 0.5
+                                }}
+                              >
+                                {projectName} • {positionName} • {displayMode === 'days' ? `${displayValue}d` : `${displayValue}%`}
+                              </Typography>
+                            </Box>
+                            
+                            {/* Remove Button Only */}
+                            <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                              <Button 
+                                size="small" 
+                                variant="outlined" 
+                                color="error"
+                                onClick={() => deleteAllocationMutation.mutate(allocation.ID)}
+                                sx={{ fontSize: '0.6rem', minHeight: '18px', px: 1, py: 0.25 }}
+                              >
+                                Remove
+                              </Button>
+                            </Box>
+                          </Box>
+                        );
+                      })}
                     </Box>
                   </>
                 );
@@ -783,7 +923,51 @@ export default function Home({ selectedDate }: HomeProps) {
         fullWidth
         sx={{ '& .MuiDialog-paper': { p: 2 } }}
       >
-        <DialogTitle>Monthly Allocation View - {monthlyAllocationDialog.monthYear}</DialogTitle>
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>Monthly Allocation View - {monthlyAllocationDialog.monthYear}</span>
+          <ToggleButtonGroup
+            value={displayMode}
+            exclusive
+            onChange={(_: React.MouseEvent<HTMLElement>, value: 'percentage' | 'days' | null) => value && setDisplayMode(value)}
+            size="small"
+            sx={{
+              '& .MuiToggleButton-root': {
+                px: 2,
+                py: 0.5,
+                fontSize: '0.875rem',
+                fontWeight: 500,
+                border: '1px solid rgba(0, 0, 0, 0.23)',
+                '&:not(:first-of-type)': {
+                  borderRadius: '0 4px 4px 0',
+                },
+                '&:first-of-type': {
+                  borderRadius: '4px 0 0 4px',
+                },
+                '&.Mui-selected': {
+                  backgroundColor: '#3b82f6',
+                  color: 'white',
+                  '&:hover': {
+                    backgroundColor: '#2563eb',
+                  },
+                },
+                '&:not(.Mui-selected)': {
+                  backgroundColor: 'white',
+                  color: '#374151',
+                  '&:hover': {
+                    backgroundColor: '#f3f4f6',
+                  },
+                },
+              },
+            }}
+          >
+            <ToggleButton value="percentage">
+              %
+            </ToggleButton>
+            <ToggleButton value="days">
+              Days
+            </ToggleButton>
+          </ToggleButtonGroup>
+        </DialogTitle>
         <DialogContent sx={{ p: 2 }}>
           <Box sx={{ maxHeight: '70vh', overflow: 'auto' }}>
             <TableContainer component={Paper}>
@@ -860,9 +1044,8 @@ export default function Home({ selectedDate }: HomeProps) {
                               return isWithinInterval(allocationDate, { start: monthStart, end: monthEnd });
                             })
                             .map(a => {
-                              // Find the position to get the project name
-                              const position = positions.find(p => p.ID === a.PositionID);
-                              return position?.ProjectName || 'Unknown Project';
+                              // Use project name directly from allocation (joined from backend)
+                              return a.ProjectName || 'Unknown Project';
                             })
                         )];
                         
@@ -876,8 +1059,7 @@ export default function Home({ selectedDate }: HomeProps) {
                             {monthProjects.map((project) => {
                               // Find allocation for this resource and project
                               const allocation = resourceAllocations.find(a => {
-                                const position = positions.find(p => p.ID === a.PositionID);
-                                return position?.ProjectName === project;
+                                return a.ProjectName === project;
                               });
                               return (
                                 <TableCell key={project} align="center" sx={{ p: 0.5 }}>
@@ -890,26 +1072,13 @@ export default function Home({ selectedDate }: HomeProps) {
                                       fontWeight: 'bold'
                                     }}>
                                       {(() => {
-                                // Convert allocation to the selected display mode
-                                const position = positions.find(p => p.ID === allocation.PositionID);
-                                const normalizedMode = position?.AllocationMode?.toLowerCase()?.trim();
-                                const isDaysMode = normalizedMode === 'days' || normalizedMode === 'day';
-                                
+                                // All allocations are stored as percentages in the database
+                                // Convert to display mode
                                 let displayValue;
                                 if (displayMode === 'days') {
-                                  // Convert everything to days
-                                  if (isDaysMode) {
-                                    displayValue = allocation.LoE; // Already in days
-                                  } else {
-                                    displayValue = percentageToDays(allocation.LoE); // Convert % to days
-                                  }
+                                  displayValue = percentageToDays(allocation.LoE); // Convert % to days
                                 } else {
-                                  // Convert everything to percentage
-                                  if (isDaysMode) {
-                                    displayValue = Math.round((allocation.LoE / 20) * 100); // Convert days to %
-                                  } else {
-                                    displayValue = allocation.LoE; // Already in %
-                                  }
+                                  displayValue = allocation.LoE; // Already in %
                                 }
                                 
                                 return displayMode === 'days' ? `${displayValue}d` : `${displayValue}%`;
@@ -933,33 +1102,18 @@ export default function Home({ selectedDate }: HomeProps) {
                                   fontWeight: 'bold'
                                 }}>
                                   {(() => {
+                                // All allocations are stored as percentages in the database
                                 // Convert total to the selected display mode
                                 let totalDisplayValue;
                                 if (displayMode === 'days') {
-                                  // Convert total to days
+                                  // Convert total percentage to days
                                   totalDisplayValue = resourceAllocations.reduce((sum, a) => {
-                                    const position = positions.find(p => p.ID === a.PositionID);
-                                    const normalizedMode = position?.AllocationMode?.toLowerCase()?.trim();
-                                    const isDaysMode = normalizedMode === 'days' || normalizedMode === 'day';
-                                    
-                                    if (isDaysMode) {
-                                      return sum + a.LoE; // Already in days
-                                    } else {
-                                      return sum + percentageToDays(a.LoE); // Convert % to days
-                                    }
+                                    return sum + percentageToDays(a.LoE); // Convert % to days
                                   }, 0);
                                 } else {
-                                  // Convert total to percentage
+                                  // Sum percentages
                                   totalDisplayValue = resourceAllocations.reduce((sum, a) => {
-                                    const position = positions.find(p => p.ID === a.PositionID);
-                                    const normalizedMode = position?.AllocationMode?.toLowerCase()?.trim();
-                                    const isDaysMode = normalizedMode === 'days' || normalizedMode === 'day';
-                                    
-                                    if (isDaysMode) {
-                                      return sum + Math.round((a.LoE / 20) * 100); // Convert days to %
-                                    } else {
-                                      return sum + a.LoE; // Already in %
-                                    }
+                                    return sum + a.LoE; // Already in %
                                   }, 0);
                                 }
                                 

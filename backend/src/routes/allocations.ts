@@ -8,7 +8,21 @@ router.get('/', async (req, res) => {
   try {
     const pool = await getConnection();
     const result = await pool.request().query(`
-      SELECT * FROM dbo.Allocation
+      SELECT 
+        a.ID,
+        a.ProjectID,
+        a.ResourceID,
+        a.PositionID,
+        a.MonthYear,
+        a.AllocationMode,
+        a.LoE,
+        p.Name as ProjectName,
+        pos.PositionName,
+        r.Name as ResourceName
+      FROM dbo.Allocation a
+      LEFT JOIN dbo.Projects p ON a.ProjectID = p.ID
+      LEFT JOIN dbo.Positions pos ON a.PositionID = pos.ID
+      LEFT JOIN dbo.Resources r ON a.ResourceID = r.ID
     `);
     res.json(result.recordset);
   } catch (error: any) {

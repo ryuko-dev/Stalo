@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { 
   Box, 
   Typography, 
@@ -30,7 +30,9 @@ import {
   Add as AddIcon,
   Search as SearchIcon,
   FilterList as FilterIcon,
-  Edit as EditIcon
+  Edit as EditIcon,
+  Download as DownloadIcon,
+  Upload as UploadIcon
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -40,12 +42,14 @@ import { getResources, createResource, updateResource, deleteResource, getEntiti
 import type { Resource } from '../types';
 import type { Entity } from '../types/entities';
 import { format } from 'date-fns';
+import * as XLSX from 'xlsx';
 
 const resourceTypes = ['Staff', 'SME'];
 const workDaysOptions = ['Mon-Fri', 'Sun-Thu'];
 
 export default function Resources() {
   const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [notification, setNotification] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
     open: false,
     message: '',
@@ -58,6 +62,102 @@ export default function Resources() {
 
   const showNotification = (message: string, severity: 'success' | 'error' = 'success') => {
     setNotification({ open: true, message, severity });
+  };
+
+  // Excel download function
+  const downloadExcel = () => {
+    try {
+      const worksheetData = filteredResources.map(resource => ({
+        'Name': resource.Name || '',
+        'Type': resource.ResourceType || '',
+        'Entity': resource.EntityName || resource.Entity || '',
+        'Vendor Account': resource.DynamicsVendorAcc || '',
+        'Start Date': resource.StartDate ? format(new Date(resource.StartDate), 'yyyy-MM-dd') : '',
+        'End Date': resource.EndDate ? format(new Date(resource.EndDate), 'yyyy-MM-dd') : '',
+        'Work Days': resource.WorkDays || '',
+        'Department': resource.Department || ''
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(worksheetData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Resources');
+      
+      // Set column widths
+      const colWidths = [
+        { wch: 20 }, // Name
+        { wch: 10 }, // Type
+        { wch: 15 }, // Entity
+        { wch: 15 }, // Vendor Account
+        { wch: 12 }, // Start Date
+        { wch: 12 }, // End Date
+        { wch: 10 }, // Work Days
+        { wch: 15 }  // Department
+      ];
+      worksheet['!cols'] = colWidths;
+
+      XLSX.writeFile(workbook, `resources_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
+      showNotification('Resources downloaded successfully!', 'success');
+    } catch (error) {
+      showNotification('Error downloading Excel file', 'error');
+    }
+  };
+
+  // Excel upload function
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
+
+        let successCount = 0;
+        let errorCount = 0;
+
+        jsonData.forEach((row) => {
+          try {
+            const resourceData: Partial<Resource> = {
+              Name: row['Name'] || '',
+              ResourceType: row['Type'] || '',
+              Entity: row['Entity'] || '',
+              DynamicsVendorAcc: row['Vendor Account'] || '',
+              StartDate: row['Start Date'] ? new Date(row['Start Date']).toISOString().split('T')[0] : '',
+              EndDate: row['End Date'] ? new Date(row['End Date']).toISOString().split('T')[0] : null,
+              WorkDays: row['Work Days'] || '',
+              Department: row['Department'] || ''
+            };
+
+            // Validate required fields
+            if (resourceData.Name && resourceData.ResourceType && resourceData.Entity && 
+                resourceData.StartDate && resourceData.WorkDays && resourceData.Department) {
+              createMutation.mutate(resourceData);
+              successCount++;
+            } else {
+              errorCount++;
+            }
+          } catch (error) {
+            errorCount++;
+          }
+        });
+
+        showNotification(
+          `Upload completed: ${successCount} resources added, ${errorCount} failed`, 
+          successCount > 0 ? 'success' : 'error'
+        );
+      } catch (error) {
+        showNotification('Error reading Excel file', 'error');
+      }
+    };
+
+    reader.readAsArrayBuffer(file);
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const { data: resourcesData } = useQuery<Resource[], Error>({ 
@@ -170,12 +270,39 @@ export default function Resources() {
           <Typography variant="h5" component="h1" sx={{ fontWeight: 'bold', color: '#333' }}>
             Resources
           </Typography>
-          <Chip 
-            label={`${filteredResources.length}/${resources.length}`} 
-            color="primary" 
-            variant="outlined" 
-            size="small"
-          />
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<DownloadIcon />}
+              onClick={downloadExcel}
+              sx={{ fontSize: '0.75rem' }}
+            >
+              Download Excel
+            </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<UploadIcon />}
+              onClick={() => fileInputRef.current?.click()}
+              sx={{ fontSize: '0.75rem' }}
+            >
+              Upload Excel
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleFileUpload}
+              style={{ display: 'none' }}
+            />
+            <Chip 
+              label={`${filteredResources.length}/${resources.length}`} 
+              color="primary" 
+              variant="outlined" 
+              size="small"
+            />
+          </Box>
         </Box>
 
         {/* Compact Add Resource Form */}

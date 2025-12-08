@@ -25,7 +25,10 @@ import {
 } from '@mui/material';
 import { 
   Delete as DeleteIcon,
-  Search as SearchIcon
+  Edit as EditIcon,
+  Search as SearchIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -49,6 +52,9 @@ export default function Settings() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState<string>('all');
   const [filterActive, setFilterActive] = useState<string>('all');
+  const [editingUser, setEditingUser] = useState<string | null>(null);
+  const [editFormData, setEditFormData] = useState<Partial<SystemUser>>({});
+  const [usersSectionCollapsed, setUsersSectionCollapsed] = useState(true);
 
   const showNotification = (message: string, severity: 'success' | 'error' = 'success') => {
     setNotification({ open: true, message, severity });
@@ -142,32 +148,71 @@ export default function Settings() {
     });
   };
 
-  const handleActiveChange = (id: string, value: boolean) => {
-    mutation.mutate({ id, payload: { Active: value } });
+  const handleEditClick = (user: SystemUser) => {
+    setEditingUser(user.ID);
+    setEditFormData({
+      Name: user.Name,
+      EmailAddress: user.EmailAddress,
+      StartDate: user.StartDate,
+      EndDate: user.EndDate,
+      Active: user.Active,
+      Role: user.Role
+    });
   };
 
-  const handleRoleChange = (id: string, value: string) => {
-    mutation.mutate({ id, payload: { Role: value } });
+  const handleEditSave = () => {
+    if (editingUser && editFormData) {
+      mutation.mutate({ id: editingUser, payload: editFormData });
+      setEditingUser(null);
+      setEditFormData({});
+    }
+  };
+
+  const handleEditCancel = () => {
+    setEditingUser(null);
+    setEditFormData({});
+  };
+
+  const handleEditFieldChange = (field: keyof SystemUser, value: any) => {
+    setEditFormData(prev => ({ ...prev, [field]: value }));
   };
 
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
       <Box sx={{ p: 2, backgroundColor: '#f8f9fa', minHeight: '100vh' }}>
         {/* Compact Header */}
-        <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography variant="h5" component="h1" sx={{ fontWeight: 'bold', color: '#333' }}>
-            Settings
-          </Typography>
-          <Chip 
-            label={`${filteredUsers.length}/${users.length} Users`} 
-            color="primary" 
-            variant="outlined" 
-            size="small"
-          />
-        </Box>
-
-        {/* Filters */}
         <Card sx={{ mb: 2, boxShadow: 1 }}>
+          <CardContent sx={{ p: 1, '&:last-child': { pb: 1 } }}>
+            <Box 
+              sx={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                cursor: 'pointer',
+                '&:hover': { backgroundColor: 'action.hover' }
+              }}
+              onClick={() => setUsersSectionCollapsed(!usersSectionCollapsed)}
+            >
+              <Typography variant="h5" component="h1" sx={{ fontWeight: 'bold', color: '#333' }}>
+                System Users
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Chip 
+                  label={`${filteredUsers.length}/${users.length} Users`} 
+                  color="primary" 
+                  variant="outlined" 
+                  size="small"
+                />
+                {usersSectionCollapsed ? <ExpandMoreIcon /> : <ExpandLessIcon />}
+              </Box>
+            </Box>
+          </CardContent>
+        </Card>
+
+        {!usersSectionCollapsed && (
+          <>
+            {/* Filters */}
+            <Card sx={{ mb: 2, boxShadow: 1 }}>
           <CardContent sx={{ p: 1, '&:last-child': { pb: 1 } }}>
             <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
               <TextField
@@ -380,48 +425,139 @@ export default function Settings() {
                     ) : (
                       filteredUsers.map((user: SystemUser) => (
                         <TableRow key={user.ID} hover sx={{ '&:hover': { backgroundColor: 'action.hover' } }}>
-                          <TableCell sx={{ fontSize: '0.75rem', p: 1 }}>{user.Name}</TableCell>
-                          <TableCell sx={{ fontSize: '0.75rem', p: 1 }}>{user.EmailAddress}</TableCell>
                           <TableCell sx={{ fontSize: '0.75rem', p: 1 }}>
-                            {user.StartDate ? format(new Date(user.StartDate), 'yyyy-MM-dd') : '-'}
+                            {editingUser === user.ID ? (
+                              <TextField
+                                size="small"
+                                value={editFormData.Name || ''}
+                                onChange={(e) => handleEditFieldChange('Name', e.target.value)}
+                                sx={{ '& .MuiInputBase-input': { fontSize: '0.75rem' } }}
+                              />
+                            ) : (
+                              user.Name
+                            )}
                           </TableCell>
                           <TableCell sx={{ fontSize: '0.75rem', p: 1 }}>
-                            {user.EndDate ? format(new Date(user.EndDate), 'yyyy-MM-dd') : '-'}
+                            {editingUser === user.ID ? (
+                              <TextField
+                                size="small"
+                                value={editFormData.EmailAddress || ''}
+                                onChange={(e) => handleEditFieldChange('EmailAddress', e.target.value)}
+                                sx={{ '& .MuiInputBase-input': { fontSize: '0.75rem' } }}
+                              />
+                            ) : (
+                              user.EmailAddress
+                            )}
                           </TableCell>
                           <TableCell sx={{ fontSize: '0.75rem', p: 1 }}>
-                            <FormControl size="small">
-                              <Select 
-                                value={String(user.Active)} 
-                                onChange={(e) => handleActiveChange(user.ID, e.target.value === 'true')}
-                                sx={{ fontSize: '0.75rem' }}
-                              >
-                                <MenuItem value="true" sx={{ fontSize: '0.75rem' }}>Yes</MenuItem>
-                                <MenuItem value="false" sx={{ fontSize: '0.75rem' }}>No</MenuItem>
-                              </Select>
-                            </FormControl>
+                            {editingUser === user.ID ? (
+                              <DatePicker
+                                value={editFormData.StartDate ? new Date(editFormData.StartDate) : null}
+                                onChange={(date) => handleEditFieldChange('StartDate', date ? date.toISOString().split('T')[0] : '')}
+                                slotProps={{
+                                  textField: {
+                                    size: 'small',
+                                    sx: { '& .MuiInputBase-input': { fontSize: '0.75rem' } }
+                                  }
+                                }}
+                              />
+                            ) : (
+                              user.StartDate ? format(new Date(user.StartDate), 'yyyy-MM-dd') : '-'
+                            )}
                           </TableCell>
                           <TableCell sx={{ fontSize: '0.75rem', p: 1 }}>
-                            <FormControl size="small">
-                              <Select 
-                                value={user.Role ?? ''} 
-                                onChange={(e) => handleRoleChange(user.ID, String(e.target.value))}
-                                sx={{ fontSize: '0.75rem' }}
-                              >
-                                {roleOptions.map((role) => (
-                                  <MenuItem key={role} value={role} sx={{ fontSize: '0.75rem' }}>{role}</MenuItem>
-                                ))}
-                              </Select>
-                            </FormControl>
+                            {editingUser === user.ID ? (
+                              <DatePicker
+                                value={editFormData.EndDate ? new Date(editFormData.EndDate) : null}
+                                onChange={(date) => handleEditFieldChange('EndDate', date ? date.toISOString().split('T')[0] : null)}
+                                slotProps={{
+                                  textField: {
+                                    size: 'small',
+                                    sx: { '& .MuiInputBase-input': { fontSize: '0.75rem' } }
+                                  }
+                                }}
+                              />
+                            ) : (
+                              user.EndDate ? format(new Date(user.EndDate), 'yyyy-MM-dd') : '-'
+                            )}
                           </TableCell>
                           <TableCell sx={{ fontSize: '0.75rem', p: 1 }}>
-                            <IconButton 
-                              size="small" 
-                              color="error" 
-                              onClick={() => deleteMutation.mutate(user.ID)}
-                              sx={{ p: 0.5 }}
-                            >
-                              <DeleteIcon fontSize="small" />
-                            </IconButton>
+                            {editingUser === user.ID ? (
+                              <FormControl size="small">
+                                <Select 
+                                  value={String(editFormData.Active)} 
+                                  onChange={(e) => handleEditFieldChange('Active', e.target.value === 'true')}
+                                  sx={{ fontSize: '0.75rem' }}
+                                >
+                                  <MenuItem value="true" sx={{ fontSize: '0.75rem' }}>Yes</MenuItem>
+                                  <MenuItem value="false" sx={{ fontSize: '0.75rem' }}>No</MenuItem>
+                                </Select>
+                              </FormControl>
+                            ) : (
+                              <Typography sx={{ fontSize: '0.75rem' }}>
+                                {user.Active ? 'Yes' : 'No'}
+                              </Typography>
+                            )}
+                          </TableCell>
+                          <TableCell sx={{ fontSize: '0.75rem', p: 1 }}>
+                            {editingUser === user.ID ? (
+                              <FormControl size="small">
+                                <Select 
+                                  value={editFormData.Role ?? ''} 
+                                  onChange={(e) => handleEditFieldChange('Role', String(e.target.value))}
+                                  sx={{ fontSize: '0.75rem' }}
+                                >
+                                  {roleOptions.map((role) => (
+                                    <MenuItem key={role} value={role} sx={{ fontSize: '0.75rem' }}>{role}</MenuItem>
+                                  ))}
+                                </Select>
+                              </FormControl>
+                            ) : (
+                              <Typography sx={{ fontSize: '0.75rem' }}>
+                                {user.Role}
+                              </Typography>
+                            )}
+                          </TableCell>
+                          <TableCell sx={{ fontSize: '0.75rem', p: 1 }}>
+                            {editingUser === user.ID ? (
+                              <Box sx={{ display: 'flex', gap: 0.5 }}>
+                                <IconButton 
+                                  size="small" 
+                                  color="primary" 
+                                  onClick={handleEditSave}
+                                  sx={{ p: 0.5 }}
+                                >
+                                  <DeleteIcon fontSize="small" />
+                                </IconButton>
+                                <IconButton 
+                                  size="small" 
+                                  color="secondary" 
+                                  onClick={handleEditCancel}
+                                  sx={{ p: 0.5 }}
+                                >
+                                  <EditIcon fontSize="small" />
+                                </IconButton>
+                              </Box>
+                            ) : (
+                              <Box sx={{ display: 'flex', gap: 0.5 }}>
+                                <IconButton 
+                                  size="small" 
+                                  color="primary" 
+                                  onClick={() => handleEditClick(user)}
+                                  sx={{ p: 0.5 }}
+                                >
+                                  <EditIcon fontSize="small" />
+                                </IconButton>
+                                <IconButton 
+                                  size="small" 
+                                  color="error" 
+                                  onClick={() => deleteMutation.mutate(user.ID)}
+                                  sx={{ p: 0.5 }}
+                                >
+                                  <DeleteIcon fontSize="small" />
+                                </IconButton>
+                              </Box>
+                            )}
                           </TableCell>
                         </TableRow>
                       ))
@@ -432,6 +568,8 @@ export default function Settings() {
             )}
           </CardContent>
         </Card>
+          </>
+        )}
 
         {/* Entities Section */}
         <Box sx={{ mt: 3 }}>
@@ -465,6 +603,9 @@ function EntitiesManager() {
     severity: 'success'
   });
   const [searchTerm, setSearchTerm] = useState('');
+  const [editingEntity, setEditingEntity] = useState<string | null>(null);
+  const [editEntityData, setEditEntityData] = useState<Partial<Entity>>({});
+  const [entitiesSectionCollapsed, setEntitiesSectionCollapsed] = useState(true);
 
   const showNotification = (message: string, severity: 'success' | 'error' = 'success') => {
     setNotification({ open: true, message, severity });
@@ -549,24 +690,66 @@ function EntitiesManager() {
     });
   };
 
-  const handleUpdate = (id: string, field: keyof EntityUpdate, value: string) => {
-    updateMutation.mutate({ id, payload: { [field]: value } });
+  const handleEntityEditClick = (entity: Entity) => {
+    setEditingEntity(entity.ID);
+    setEditEntityData({
+      Name: entity.Name,
+      CurrencyCode: entity.CurrencyCode,
+      SSAccCode: entity.SSAccCode,
+      TaxAccCode: entity.TaxAccCode
+    });
+  };
+
+  const handleEntityEditSave = () => {
+    if (editingEntity && editEntityData) {
+      updateMutation.mutate({ id: editingEntity, payload: editEntityData as EntityUpdate });
+      setEditingEntity(null);
+      setEditEntityData({});
+    }
+  };
+
+  const handleEntityEditCancel = () => {
+    setEditingEntity(null);
+    setEditEntityData({});
+  };
+
+  const handleEntityEditFieldChange = (field: keyof Entity, value: string) => {
+    setEditEntityData(prev => ({ ...prev, [field]: value }));
   };
 
   return (
     <>
       {/* Compact Header */}
-      <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="h5" component="h2" sx={{ fontWeight: 'bold', color: '#333' }}>
-          Entities
-        </Typography>
-        <Chip 
-          label={`${filteredEntities.length}/${entities.length} Entities`} 
-          color="primary" 
-          variant="outlined" 
-          size="small"
-        />
-      </Box>
+      <Card sx={{ mb: 2, boxShadow: 1 }}>
+        <CardContent sx={{ p: 1, '&:last-child': { pb: 1 } }}>
+          <Box 
+            sx={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              cursor: 'pointer',
+              '&:hover': { backgroundColor: 'action.hover' }
+            }}
+            onClick={() => setEntitiesSectionCollapsed(!entitiesSectionCollapsed)}
+          >
+            <Typography variant="h5" component="h2" sx={{ fontWeight: 'bold', color: '#333' }}>
+              Entities
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Chip 
+                label={`${filteredEntities.length}/${entities.length} Entities`} 
+                color="primary" 
+                variant="outlined" 
+                size="small"
+              />
+              {entitiesSectionCollapsed ? <ExpandMoreIcon /> : <ExpandLessIcon />}
+            </Box>
+          </Box>
+        </CardContent>
+      </Card>
+
+      {!entitiesSectionCollapsed && (
+        <>
 
       {/* Search Filter */}
       <Card sx={{ mb: 2, boxShadow: 1 }}>
@@ -711,46 +894,101 @@ function EntitiesManager() {
                     filteredEntities.map((entity: Entity) => (
                       <TableRow key={entity.ID} hover sx={{ '&:hover': { backgroundColor: 'action.hover' } }}>
                         <TableCell sx={{ fontSize: '0.75rem', p: 1 }}>
-                          <TextField 
-                            size="small" 
-                            defaultValue={entity.Name} 
-                            onBlur={(e) => handleUpdate(entity.ID, 'Name', e.target.value)}
-                            sx={{ '& .MuiInputBase-input': { fontSize: '0.75rem' } }}
-                          />
+                          {editingEntity === entity.ID ? (
+                            <TextField 
+                              size="small" 
+                              value={editEntityData.Name || ''}
+                              onChange={(e) => handleEntityEditFieldChange('Name', e.target.value)}
+                              sx={{ '& .MuiInputBase-input': { fontSize: '0.75rem' } }}
+                            />
+                          ) : (
+                            <Typography sx={{ fontSize: '0.75rem' }}>
+                              {entity.Name}
+                            </Typography>
+                          )}
                         </TableCell>
                         <TableCell sx={{ fontSize: '0.75rem', p: 1 }}>
-                          <TextField 
-                            size="small" 
-                            defaultValue={entity.CurrencyCode} 
-                            onBlur={(e) => handleUpdate(entity.ID, 'CurrencyCode', e.target.value)}
-                            sx={{ '& .MuiInputBase-input': { fontSize: '0.75rem' } }}
-                          />
+                          {editingEntity === entity.ID ? (
+                            <TextField 
+                              size="small" 
+                              value={editEntityData.CurrencyCode || ''}
+                              onChange={(e) => handleEntityEditFieldChange('CurrencyCode', e.target.value)}
+                              sx={{ '& .MuiInputBase-input': { fontSize: '0.75rem' } }}
+                            />
+                          ) : (
+                            <Typography sx={{ fontSize: '0.75rem' }}>
+                              {entity.CurrencyCode}
+                            </Typography>
+                          )}
                         </TableCell>
                         <TableCell sx={{ fontSize: '0.75rem', p: 1 }}>
-                          <TextField 
-                            size="small" 
-                            defaultValue={entity.SSAccCode} 
-                            onBlur={(e) => handleUpdate(entity.ID, 'SSAccCode', e.target.value)}
-                            sx={{ '& .MuiInputBase-input': { fontSize: '0.75rem' } }}
-                          />
+                          {editingEntity === entity.ID ? (
+                            <TextField 
+                              size="small" 
+                              value={editEntityData.SSAccCode || ''}
+                              onChange={(e) => handleEntityEditFieldChange('SSAccCode', e.target.value)}
+                              sx={{ '& .MuiInputBase-input': { fontSize: '0.75rem' } }}
+                            />
+                          ) : (
+                            <Typography sx={{ fontSize: '0.75rem' }}>
+                              {entity.SSAccCode}
+                            </Typography>
+                          )}
                         </TableCell>
                         <TableCell sx={{ fontSize: '0.75rem', p: 1 }}>
-                          <TextField 
-                            size="small" 
-                            defaultValue={entity.TaxAccCode} 
-                            onBlur={(e) => handleUpdate(entity.ID, 'TaxAccCode', e.target.value)}
-                            sx={{ '& .MuiInputBase-input': { fontSize: '0.75rem' } }}
-                          />
+                          {editingEntity === entity.ID ? (
+                            <TextField 
+                              size="small" 
+                              value={editEntityData.TaxAccCode || ''}
+                              onChange={(e) => handleEntityEditFieldChange('TaxAccCode', e.target.value)}
+                              sx={{ '& .MuiInputBase-input': { fontSize: '0.75rem' } }}
+                            />
+                          ) : (
+                            <Typography sx={{ fontSize: '0.75rem' }}>
+                              {entity.TaxAccCode}
+                            </Typography>
+                          )}
                         </TableCell>
                         <TableCell sx={{ fontSize: '0.75rem', p: 1 }}>
-                          <IconButton 
-                            size="small" 
-                            color="error" 
-                            onClick={() => deleteMutation.mutate(entity.ID)}
-                            sx={{ p: 0.5 }}
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
+                          {editingEntity === entity.ID ? (
+                            <Box sx={{ display: 'flex', gap: 0.5 }}>
+                              <IconButton 
+                                size="small" 
+                                color="primary" 
+                                onClick={handleEntityEditSave}
+                                sx={{ p: 0.5 }}
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                              <IconButton 
+                                size="small" 
+                                color="secondary" 
+                                onClick={handleEntityEditCancel}
+                                sx={{ p: 0.5 }}
+                              >
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                            </Box>
+                          ) : (
+                            <Box sx={{ display: 'flex', gap: 0.5 }}>
+                              <IconButton 
+                                size="small" 
+                                color="primary" 
+                                onClick={() => handleEntityEditClick(entity)}
+                                sx={{ p: 0.5 }}
+                              >
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                              <IconButton 
+                                size="small" 
+                                color="error" 
+                                onClick={() => deleteMutation.mutate(entity.ID)}
+                                sx={{ p: 0.5 }}
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </Box>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))
@@ -761,6 +999,8 @@ function EntitiesManager() {
           )}
         </CardContent>
       </Card>
+        </>
+      )}
 
       {/* Entity Notification Snackbar */}
       <Snackbar

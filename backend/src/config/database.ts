@@ -11,21 +11,32 @@ const config: sql.config = {
   options: {
     encrypt: true,
     trustServerCertificate: false,
+    connectTimeout: 60000,
+    requestTimeout: 60000,
   },
   pool: {
     max: 10,
     min: 0,
     idleTimeoutMillis: 30000,
   },
+  connectionTimeout: 60000,
 };
 
 let pool: sql.ConnectionPool | null = null;
 
 export async function getConnection(): Promise<sql.ConnectionPool> {
-  if (!pool) {
-    pool = await sql.connect(config);
+  try {
+    if (!pool || pool.connected === false) {
+      console.log('Establishing new database connection...');
+      pool = await sql.connect(config);
+      console.log('Database connection established successfully');
+    }
+    return pool;
+  } catch (error) {
+    console.error('Database connection failed:', error);
+    pool = null;
+    throw error;
   }
-  return pool;
 }
 
 export { sql };

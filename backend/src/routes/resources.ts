@@ -50,11 +50,26 @@ router.post('/', async (req, res) => {
     const { Name, ResourceType, Entity, DynamicsVendorAcc, StartDate, EndDate, WorkDays, Department } = req.body;
     const pool = await getConnection();
 
+    // If Entity is a name (not a GUID), find the entity ID
+    let entityId = Entity;
+    if (Entity && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(Entity)) {
+      const entityResult = await pool
+        .request()
+        .input('EntityName', sql.NVarChar(200), Entity)
+        .query('SELECT ID FROM dbo.Entities WHERE Name = @EntityName');
+      
+      if (entityResult.recordset.length === 0) {
+        return res.status(400).json({ error: 'Entity not found', details: `No entity found with name: ${Entity}` });
+      }
+      
+      entityId = entityResult.recordset[0].ID;
+    }
+
     const result = await pool
       .request()
       .input('Name', sql.NVarChar(200), Name)
       .input('ResourceType', sql.NVarChar(20), ResourceType)
-      .input('Entity', sql.UniqueIdentifier, Entity)
+      .input('Entity', sql.UniqueIdentifier, entityId)
       .input('DynamicsVendorAcc', sql.NVarChar(100), DynamicsVendorAcc || null)
       .input('StartDate', sql.Date, StartDate)
       .input('EndDate', EndDate ? sql.Date : sql.Date, EndDate || null)

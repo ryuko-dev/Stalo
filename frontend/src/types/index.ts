@@ -41,6 +41,8 @@ export interface Allocation {
   ResourceID: string;
   PositionID: string;
   PositionName: string;
+  ProjectName?: string;
+  ResourceName?: string;
   MonthYear: string;
   AllocationMode: string;
   LoE: number;
