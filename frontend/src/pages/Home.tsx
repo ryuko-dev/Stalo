@@ -1,12 +1,28 @@
-import React, { useState } from 'react';
-import { Box, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Dialog, DialogTitle, DialogContent, TextField, Button, Typography, ToggleButton, ToggleButtonGroup } from '@mui/material';
+import React, { useState, useEffect } from 'react';
+import { Box, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Dialog, DialogTitle, DialogContent, TextField, Button, Typography, ToggleButton, ToggleButtonGroup, Tooltip, IconButton } from '@mui/material';
+import { Download } from '@mui/icons-material';
 import { addMonths, format, isAfter, isBefore, isWithinInterval, startOfMonth, endOfMonth } from 'date-fns';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getResources, getPositions, createAllocation, getAllocations, deleteAllocation } from '../services/staloService';
+import { getResources, getPositions, createAllocation, getAllocations, deleteAllocation, createDragAllocation, validatePositions } from '../services/staloService';
 import type { Resource } from '../types';
 import type { Position } from '../types';
 import type { Allocation } from '../types';
 import type { AllocationFormData } from '../types';
+import type { DragAllocationData } from '../types';
+import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
+import {
+  DndContext,
+  type DragEndEvent,
+  type DragStartEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragOverlay,
+  closestCenter,
+  useDraggable,
+  useDroppable,
+} from '@dnd-kit/core';
 
 interface HomeProps {
   selectedDate: Date;
@@ -128,6 +144,199 @@ export default function Home({ selectedDate }: HomeProps) {
     LoE: 0,
   });
 
+  // Drag and drop state
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [draggedPosition, setDraggedPosition] = useState<Position | null>(null);
+  
+  // Sensors for drag and drop
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
+
+  // Handle drag start
+  const handleDragStart = (event: DragStartEvent) => {
+    const { active } = event;
+    console.log('Drag start event:', { activeId: active.id });
+    setActiveId(active.id as string);
+    
+    // Find the dragged position
+    const position = positions.find(p => p.ID === active.id);
+    console.log('Found position:', position);
+    setDraggedPosition(position || null);
+  };
+
+  // Handle drag end
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { over } = event;
+    console.log('Drag end event:', { over, draggedPosition });
+    
+    if (!over) {
+      console.log('No drop target - clearing drag state');
+      setActiveId(null);
+      setDraggedPosition(null);
+      return;
+    }
+
+    // Check if dropping on a resource cell
+    const dropId = over.id as string;
+    console.log('Drop ID:', dropId);
+    
+    if (dropId.startsWith('cell-')) {
+      const parts = dropId.split('-');
+      console.log('Drop ID parts:', parts);
+      
+      // The format is: cell-{resourceId-with-hyphens}-{monthIndex}
+      // We need to take everything after the first 'cell-' part, then the last part is monthIndex
+      const monthIndex = parseInt(parts[parts.length - 1]);
+      const resourceId = parts.slice(1, parts.length - 1).join('-');
+      
+      console.log('Parsed:', { resourceId, monthIndex });
+      
+      if (isNaN(monthIndex) || monthIndex < 0 || monthIndex >= months.length) {
+        console.error('Invalid month index:', monthIndex);
+        setActiveId(null);
+        setDraggedPosition(null);
+        return;
+      }
+      
+      const month = months[monthIndex];
+      console.log('Dropping on cell:', { resourceId, monthIndex, month, draggedPosition });
+      
+      if (draggedPosition) {
+        // Check if the dragged position's month matches the target cell's month
+        const draggedPositionMonth = startOfMonth(new Date(draggedPosition.MonthYear));
+        const targetCellMonth = startOfMonth(month);
+        
+        if (draggedPositionMonth.getTime() !== targetCellMonth.getTime()) {
+          console.log('Cannot allocate: Position month does not match target cell month');
+          console.log('Position month:', format(draggedPositionMonth, 'MMM yyyy'));
+          console.log('Target month:', format(targetCellMonth, 'MMM yyyy'));
+          setActiveId(null);
+          setDraggedPosition(null);
+          return;
+        }
+        
+        // Convert LoE to percentage if it's in days mode
+        let percentageLoE = draggedPosition.LoE;
+        const normalizedMode = draggedPosition?.AllocationMode?.toLowerCase()?.trim();
+        const isDaysMode = normalizedMode === 'days' || normalizedMode === 'day';
+        
+        // If position is in days mode, convert to percentage (20 days = 100%)
+        if (isDaysMode) {
+          percentageLoE = Math.round((draggedPosition.LoE / 20) * 100);
+        }
+        
+        // Create allocation from dragged position using position ID
+        const allocationData: DragAllocationData = {
+          PositionID: draggedPosition.ID, // Send the specific position ID
+          ResourceName: resources.find(r => r.ID === resourceId)?.Name || '',
+          MonthYear: format(month, 'yyyy-MM-dd'), // Use target cell's month
+          AllocationMode: '%', // Always store as percentage
+          LoE: percentageLoE, // Use converted percentage
+        };
+        
+        console.log('Creating allocation:', allocationData);
+        console.log('Original position LoE:', draggedPosition.LoE, 'Mode:', draggedPosition.AllocationMode, 'Converted to:', percentageLoE);
+        createDragAllocationMutation.mutate(allocationData);
+      }
+    } else {
+      console.log('Dropping on non-cell target:', dropId);
+    }
+    
+    setActiveId(null);
+    setDraggedPosition(null);
+  };
+
+  // Draggable Position Component
+  const DraggablePosition = ({ position }: { position: Position }) => {
+    const {
+      attributes,
+      listeners,
+      setNodeRef,
+      transform,
+      isDragging,
+    } = useDraggable({
+      id: position.ID,
+    });
+
+    const style = {
+      transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+      opacity: isDragging ? 0.5 : 1,
+    };
+
+    return (
+      <Box 
+        ref={setNodeRef}
+        style={style}
+        {...listeners}
+        {...attributes}
+        sx={{ 
+          backgroundColor: '#dbeafe',
+          p: 0.5,
+          borderRadius: 0.5,
+          fontSize: '0.60rem',
+          fontWeight: 'normal',
+          lineHeight: 1.2,
+          whiteSpace: 'normal',
+          wordBreak: 'break-word',
+          border: '1px solid #93c5fd',
+          color: '#1e40af',
+          cursor: isDragging ? 'grabbing' : 'grab',
+          '&:hover': {
+            backgroundColor: '#bfdbfe',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+          },
+        }}
+      >
+        {position.ProjectName} - {position.PositionName} - {formatValue(position.LoE, position.AllocationMode || '%')}
+      </Box>
+    );
+  };
+
+  // Droppable Cell Component
+  const DroppableCell = ({ resourceId, monthIndex, children, isActive, isValidDropTarget }: { 
+    resourceId: string; 
+    monthIndex: number; 
+    children: React.ReactNode;
+    isActive: boolean;
+    isValidDropTarget?: boolean;
+  }) => {
+    const { isOver, setNodeRef } = useDroppable({
+      id: `cell-${resourceId}-${monthIndex}`,
+      disabled: !isActive || (isValidDropTarget === false),
+    });
+
+    return (
+      <TableCell 
+        ref={setNodeRef}
+        align="center"
+        onClick={() => isActive && handleCellClick(resourceId, monthIndex)}
+        sx={{ 
+          cursor: isActive ? 'pointer' : 'default',
+          backgroundColor: isActive ? (
+            isValidDropTarget === false ? '#ffebee' : (isOver ? 'action.selected' : 'action.hover')
+          ) : 'inherit',
+          '&:hover': isActive ? { 
+            backgroundColor: isValidDropTarget === false ? '#ffebee' : (isOver ? 'action.selected' : 'action.hover') 
+          } : {},
+          p: 0.5,
+          width: '100px',
+          minWidth: '100px',
+          height: '16px',
+          position: 'relative',
+          overflow: 'hidden',
+          border: '1px solid white'
+        }}
+      >
+        {children}
+      </TableCell>
+    );
+  };
+
   const { data: resourcesData, isLoading } = useQuery<Resource[], Error>({
     queryKey: ['resources'],
     queryFn: getResources,
@@ -161,6 +370,22 @@ export default function Home({ selectedDate }: HomeProps) {
         LoE: 0,
       });
     },
+    onError: (error: any) => {
+      console.error('Allocation creation failed:', error);
+      alert('Failed to create allocation: ' + (error.response?.data?.error || error.message));
+    }
+  });
+
+  const createDragAllocationMutation = useMutation<Allocation, Error, DragAllocationData>({
+    mutationFn: createDragAllocation,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['allocations'] });
+      queryClient.invalidateQueries({ queryKey: ['positions'] });
+    },
+    onError: (error: any) => {
+      console.error('Drag allocation failed:', error);
+      alert('Failed to create allocation: ' + (error.response?.data?.error || error.message));
+    }
   });
 
   const deleteAllocationMutation = useMutation<void, Error, string>({
@@ -183,6 +408,36 @@ export default function Home({ selectedDate }: HomeProps) {
   const resources = resourcesData ?? [];
   const positions = positionsData ?? [];
   const allocations = allocationsData ?? [];
+
+  // Validate positions on page load/refresh to ensure data integrity
+  // This runs once when the component mounts and when months change
+  useEffect(() => {
+    const runValidation = async () => {
+      try {
+        // Get the month-year values for all displayed months (format: YYYY-MM-DD)
+        const monthYears = months.map(m => format(startOfMonth(m), 'yyyy-MM-dd'));
+        
+        console.log('Running position validation for months:', monthYears);
+        const result = await validatePositions(monthYears);
+        
+        if (result.changesCount > 0) {
+          console.log('Position validation made changes:', result);
+          // Refresh data if changes were made
+          queryClient.invalidateQueries({ queryKey: ['allocations'] });
+          queryClient.invalidateQueries({ queryKey: ['positions'] });
+        } else {
+          console.log('Position validation: no changes needed');
+        }
+      } catch (error) {
+        console.error('Position validation failed:', error);
+      }
+    };
+
+    // Only run validation if we have positions data loaded
+    if (positionsData && positionsData.length >= 0) {
+      runValidation();
+    }
+  }, [selectedDate]); // Re-run when selected date changes (which changes the displayed months)
 
   // Handle month click for monthly allocation view
   const handleMonthClick = (monthIndex: number) => {
@@ -301,16 +556,136 @@ export default function Home({ selectedDate }: HomeProps) {
     const monthStart = startOfMonth(month);
     const monthEnd = endOfMonth(month);
     
-    return positions.filter(position => {
-      if (!position.MonthYear || position.Allocated !== 'No') return false;
-      
-      const positionMonth = startOfMonth(new Date(position.MonthYear));
-      return isWithinInterval(positionMonth, { start: monthStart, end: monthEnd });
-    });
+    return positions
+      .filter(position => {
+        if (!position.MonthYear || position.Allocated !== 'No') return false;
+        
+        const positionMonth = startOfMonth(new Date(position.MonthYear));
+        return isWithinInterval(positionMonth, { start: monthStart, end: monthEnd });
+      })
+      .sort((a, b) => a.PositionName.localeCompare(b.PositionName)); // Sort by position name
   });
 
+  // Excel Export Function
+  const exportToExcel = () => {
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+    
+    // Prepare data for the main allocation sheet
+    const allocationData: any[] = [];
+    
+    // Add header row
+    const headers = ['Resource Name', 'Department', ...months.map(m => format(m, 'MMM yyyy'))];
+    allocationData.push(headers);
+    
+    // Add unallocated positions row
+    const unallocatedRow = ['Unallocated', ''];
+    months.forEach((_, i) => {
+      const unallocatedInMonth = unallocatedPositionsByMonth[i];
+      if (unallocatedInMonth.length > 0) {
+        unallocatedRow.push(unallocatedInMonth.map(p => 
+          `${p.PositionName} (${formatValue(p.LoE, p.AllocationMode)})`
+        ).join(', '));
+      } else {
+        unallocatedRow.push('');
+      }
+    });
+    allocationData.push(unallocatedRow);
+    
+    // Add department and resource rows
+    Object.entries(resourcesByDepartment).forEach(([department, deptResources]) => {
+      // Add department header
+      allocationData.push([department, '', ...Array(months.length).fill('')]);
+      
+      // Add resources in this department
+      deptResources.forEach(resource => {
+        const resourceRow = [resource.Name, resource.Department || ''];
+        
+        months.forEach(month => {
+          const monthStart = startOfMonth(month);
+          const monthEnd = endOfMonth(month);
+          
+          // Check if resource is active during this month
+          const resourceStart = new Date(resource.StartDate);
+          const resourceEnd = resource.EndDate ? new Date(resource.EndDate) : null;
+          const isActive = isWithinInterval(monthStart, { start: resourceStart, end: resourceEnd || new Date('2099-12-31') }) ||
+                          isWithinInterval(monthEnd, { start: resourceStart, end: resourceEnd || new Date('2099-12-31') }) ||
+                          (isBefore(resourceStart, monthStart) && (!resourceEnd || isAfter(resourceEnd || new Date('2099-12-31'), monthEnd)));
+          
+          if (!isActive) {
+            resourceRow.push('Not Active');
+            return;
+          }
+          
+          // Get allocations for this resource and month
+          const cellAllocations = allocations.filter(a => 
+            a.ResourceID === resource.ID &&
+            (() => {
+              const allocationDate = new Date(a.MonthYear);
+              return isWithinInterval(allocationDate, { start: monthStart, end: monthEnd });
+            })()
+          );
+          
+          if (cellAllocations.length > 0) {
+            const allocationDetails = cellAllocations.map(a => 
+              `${a.ProjectName} - ${a.PositionName} (${formatValue(a.LoE, a.AllocationMode)})`
+            ).join(', ');
+            resourceRow.push(allocationDetails);
+          } else {
+            resourceRow.push('0%');
+          }
+        });
+        
+        allocationData.push(resourceRow);
+      });
+    });
+    
+    // Create worksheet
+    const ws = XLSX.utils.aoa_to_sheet(allocationData);
+    
+    // Set column widths
+    const colWidths = [20, 15, ...Array(months.length).fill(25)];
+    ws['!cols'] = colWidths.map(w => ({ width: w }));
+    
+    // Add worksheet to workbook
+    XLSX.utils.book_append_sheet(wb, ws, 'Resource Allocation');
+    
+    // Create a separate sheet for unallocated positions details
+    const unallocatedData: any[] = [['Project Name', 'Position Name', 'Month', 'LoE', 'Allocation Mode']];
+    
+    unallocatedPositionsByMonth.forEach((monthPositions, monthIndex) => {
+      monthPositions.forEach(position => {
+        unallocatedData.push([
+          position.ProjectName,
+          position.PositionName,
+          format(months[monthIndex], 'MMM yyyy'),
+          position.LoE,
+          position.AllocationMode
+        ]);
+      });
+    });
+    
+    if (unallocatedData.length > 1) {
+      const unallocatedWs = XLSX.utils.aoa_to_sheet(unallocatedData);
+      unallocatedWs['!cols'] = [{ width: 20 }, { width: 25 }, { width: 15 }, { width: 10 }, { width: 15 }];
+      XLSX.utils.book_append_sheet(wb, unallocatedWs, 'Unallocated Positions');
+    }
+    
+    // Generate Excel file and download
+    const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const fileName = `Resource_Allocation_${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
+    saveAs(data, fileName);
+  };
+
   return (
-    <Box sx={{ px: 0, py: 2 }}>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      <Box sx={{ px: 0, py: 2 }}>
       {/* Filter Controls */}
       <Box sx={{ 
         mb: 2, 
@@ -369,6 +744,21 @@ export default function Home({ selectedDate }: HomeProps) {
               Days
             </ToggleButton>
           </ToggleButtonGroup>
+          
+          <Tooltip title="Download to Excel">
+            <IconButton 
+              onClick={exportToExcel}
+              sx={{ 
+                backgroundColor: 'primary.main',
+                color: 'white',
+                '&:hover': {
+                  backgroundColor: 'primary.dark',
+                }
+              }}
+            >
+              <Download />
+            </IconButton>
+          </Tooltip>
         </Box>
       </Box>
 
@@ -382,19 +772,24 @@ export default function Home({ selectedDate }: HomeProps) {
         pr: 0,
         boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
         borderRadius: 1,
-        border: '1px solid rgba(0, 0, 0, 0.12)'
+        border: '1px solid rgba(0, 0, 0, 0.12)',
+        maxHeight: '80vh',
+        overflow: 'auto'
       }}>
-        <Table size="small" sx={{ width: '100%', tableLayout: 'fixed' }}>
+        <Table size="small" sx={{ width: '100%', tableLayout: 'fixed' }} stickyHeader>
           <TableHead sx={{ backgroundColor: '#f9fafb' }}>
             <TableRow>
               <TableCell sx={{ 
                 width: '200px', 
                 minWidth: '200px',
-                backgroundColor: '#f3f4f6',
                 fontWeight: 600,
                 color: '#374151',
                 border: '1px solid rgba(0, 0, 0, 0.12)',
-                fontSize: '0.875rem'
+                fontSize: '0.875rem',
+                position: 'sticky',
+                left: 0,
+                zIndex: 3,
+                backgroundColor: '#f3f4f6'
               }}>
                 Name
               </TableCell>
@@ -426,15 +821,18 @@ export default function Home({ selectedDate }: HomeProps) {
             </TableRow>
             
             {/* Unallocated positions row */}
-            <TableRow>
+            <TableRow sx={{ position: 'sticky', top: 0, zIndex: 2 }}>
               <TableCell sx={{ 
                 width: '200px', 
                 minWidth: '200px',
-                backgroundColor: '#f9fafb',
                 fontWeight: 600,
                 color: '#6b7280',
                 border: '1px solid rgba(0, 0, 0, 0.12)',
-                fontSize: '0.75rem'
+                fontSize: '0.75rem',
+                position: 'sticky',
+                left: 0,
+                zIndex: 3,
+                backgroundColor: '#f9fafb'
               }}>
                 Unallocated
               </TableCell>
@@ -450,23 +848,7 @@ export default function Home({ selectedDate }: HomeProps) {
                   {unallocatedPositionsByMonth[i].length > 0 ? (
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, maxHeight: '120px', overflowY: 'auto' }}>
                       {unallocatedPositionsByMonth[i].map((position) => (
-                        <Box 
-                          key={position.ID} 
-                          sx={{ 
-                            backgroundColor: '#dbeafe',
-                            p: 0.5,
-                            borderRadius: 0.5,
-                            fontSize: '0.60rem',
-                            fontWeight: 'normal',
-                            lineHeight: 1.2,
-                            whiteSpace: 'normal',
-                            wordBreak: 'break-word',
-                            border: '1px solid #93c5fd',
-                            color: '#1e40af'
-                          }}
-                        >
-                          {position.ProjectName} - {position.PositionName} - {formatValue(position.LoE, position.AllocationMode || '%')}
-                        </Box>
+                        <DraggablePosition key={position.ID} position={position} />
                       ))}
                     </Box>
                   ) : (
@@ -500,7 +882,13 @@ export default function Home({ selectedDate }: HomeProps) {
                 {/* Resources in this department */}
                 {departmentResources.map((resource) => (
                   <TableRow key={resource.ID} hover>
-                    <TableCell component="th" scope="row" sx={{ pl: 2, pr: 1, py: 0.25, width: '200px', minWidth: '200px', fontSize: '0.8rem' }}>
+                    <TableCell component="th" scope="row" sx={{ 
+                      pl: 2, pr: 1, py: 0.25, width: '200px', minWidth: '200px', fontSize: '0.8rem',
+                      position: 'sticky',
+                      left: 0,
+                      zIndex: 1,
+                      backgroundColor: 'white'
+                    }}>
                       {resource.Name}
                     </TableCell>
                     {months.map((month, i) => {
@@ -516,22 +904,14 @@ export default function Home({ selectedDate }: HomeProps) {
                                       (isBefore(resourceStart, monthStart) && (!resourceEnd || isAfter(resourceEnd || new Date('2099-12-31'), monthEnd)));
                       
                       return (
-                        <TableCell 
+                        <DroppableCell 
                           key={i} 
-                          align="center"
-                          onClick={() => isActive && handleCellClick(resource.ID, i)}
-                          sx={{ 
-                            cursor: isActive ? 'pointer' : 'default',
-                            backgroundColor: isActive ? 'action.hover' : 'inherit',
-                            '&:hover': isActive ? { backgroundColor: 'action.selected' } : {},
-                            p: 0.5,
-                            width: '100px',
-                            minWidth: '100px',
-                            height: '16px',
-                            position: 'relative',
-                            overflow: 'hidden',
-                            border: '1px solid white'
-                          }}
+                          resourceId={resource.ID} 
+                          monthIndex={i}
+                          isActive={isActive}
+                          isValidDropTarget={draggedPosition ? (
+                            startOfMonth(new Date(draggedPosition.MonthYear)).getTime() === startOfMonth(month).getTime()
+                          ) : undefined}
                         >
                           {(() => {
                             // Start Date and End Date checks
@@ -589,58 +969,76 @@ export default function Home({ selectedDate }: HomeProps) {
                               
                               // Calculate display value based on display mode
                               let displayValue = totalPercentage;
+                              let barWidth = totalPercentage;
+                              
                               if (displayMode === 'days') {
                                 displayValue = totalPercentage * 20 / 100; // Convert % to days
+                                barWidth = displayValue * 100 / 20; // Convert days back to % for bar width
                               }
                               
                               const backgroundColor = getBackgroundColor(displayValue, displayMode === 'days' ? 'days' : '%');
                               
                               return (
-                                <Box 
-                                  sx={{ 
-                                    position: 'absolute',
-                                    top: 0,
-                                    left: 0,
-                                    width: '100%',
-                                    height: '100%',
-                                    backgroundColor: 'rgba(0,0,0,0.1)',
-                                    borderRadius: 1,
-                                    overflow: 'hidden',
-                                    display: 'flex',
-                                    alignItems: 'center'
-                                  }}
+                                <Tooltip 
+                                  title={
+                                    <div>
+                                      {cellAllocations.map((allocation) => (
+                                        <div key={allocation.ID}>
+                                          {allocation.ProjectName} - {allocation.PositionName} - {formatValue(allocation.LoE, allocation.AllocationMode)}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  }
+                                  arrow
+                                  placement="top"
                                 >
-                                  <Box
-                                    sx={{
+                                  <Box 
+                                    sx={{ 
                                       position: 'absolute',
                                       top: 0,
                                       left: 0,
+                                      width: '100%',
                                       height: '100%',
-                                      width: `${Math.min(100, Math.max(0, totalPercentage))}%`,
-                                      backgroundColor,
-                                      transition: 'width 0.3s ease',
-                                      zIndex: 0,
+                                      backgroundColor: 'rgba(0,0,0,0.1)',
+                                      borderRadius: 1,
+                                      overflow: 'hidden',
                                       display: 'flex',
                                       alignItems: 'center',
                                       justifyContent: 'center',
-                                      borderRadius: 1
                                     }}
                                   >
-                                    <Typography 
-                                      variant="caption" 
-                                      sx={{ 
-                                        fontSize: '0.5rem',
-                                        fontWeight: 'bold',
-                                        color: 'black',
-                                        lineHeight: 1,
-                                        position: 'relative',
-                                        zIndex: 1
+                                    <Box
+                                      sx={{
+                                        position: 'absolute',
+                                        top: 0,
+                                        left: 0,
+                                        height: '100%',
+                                        width: `${Math.min(100, Math.max(0, barWidth))}%`,
+                                        backgroundColor,
+                                        transition: 'width 0.3s ease',
+                                        zIndex: 0,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        borderRadius: 1
                                       }}
                                     >
-                                      {displayMode === 'days' ? `${displayValue}d` : `${displayValue}%`}
-                                    </Typography>
+                                      <Typography 
+                                        variant="caption" 
+                                        sx={{ 
+                                          fontSize: '0.5rem',
+                                          fontWeight: 'bold',
+                                          color: 'black',
+                                          lineHeight: 1,
+                                          position: 'relative',
+                                          zIndex: 1
+                                        }}
+                                      >
+                                        {displayMode === 'days' ? `${displayValue}d` : `${displayValue}%`}
+                                      </Typography>
+                                    </Box>
                                   </Box>
-                                </Box>
+                                </Tooltip>
                               );
                             } else if (isActive) {
                               return (
@@ -654,7 +1052,7 @@ export default function Home({ selectedDate }: HomeProps) {
                             
                             return null;
                           })()}
-                        </TableCell>
+                        </DroppableCell>
                       );
                     })}
                   </TableRow>
@@ -1135,6 +1533,31 @@ export default function Home({ selectedDate }: HomeProps) {
           </Box>
         </DialogContent>
       </Dialog>
+      
+      {/* Drag Overlay */}
+      <DragOverlay>
+        {activeId && draggedPosition ? (
+          <Box
+            sx={{
+              backgroundColor: '#dbeafe',
+              p: 1,
+              borderRadius: 0.5,
+              fontSize: '0.60rem',
+              fontWeight: 'normal',
+              lineHeight: 1.2,
+              whiteSpace: 'normal',
+              wordBreak: 'break-word',
+              border: '1px solid #93c5fd',
+              color: '#1e40af',
+              boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
+              opacity: 0.9,
+            }}
+          >
+            {draggedPosition.ProjectName} - {draggedPosition.PositionName} - {formatValue(draggedPosition.LoE, draggedPosition.AllocationMode || '%')}
+          </Box>
+        ) : null}
+      </DragOverlay>
     </Box>
+  </DndContext>
   );
 }

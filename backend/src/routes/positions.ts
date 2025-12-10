@@ -3,6 +3,79 @@ import { getConnection, sql } from '../config/database';
 
 const router = Router();
 
+// Validate position allocations - ensure positions with Allocated='Yes' have matching allocation entries
+router.post('/validate-allocations', async (req, res) => {
+  try {
+    const pool = await getConnection();
+    
+    // Get all positions
+    const positionsResult = await pool.request().query(`
+      SELECT p.ID, p.PositionName, p.Allocated, p.Project, pr.Name as ProjectName
+      FROM dbo.Positions p
+      LEFT JOIN dbo.Projects pr ON p.Project = pr.ID
+    `);
+    
+    // Get all allocations
+    const allocationsResult = await pool.request().query(`
+      SELECT a.ID, a.PositionID
+      FROM dbo.Allocation a
+    `);
+    
+    const positions = positionsResult.recordset;
+    const allocations = allocationsResult.recordset;
+    
+    // Build a set of position IDs that have allocations
+    const allocatedPositionIds = new Set(allocations.map(a => a.PositionID));
+    
+    // Track changes
+    const changes: { action: string; positionId: string; positionName: string; details: string }[] = [];
+    
+    for (const position of positions) {
+      const hasAllocation = allocatedPositionIds.has(position.ID);
+      
+      if (position.Allocated === 'Yes' && !hasAllocation) {
+        // Position marked as allocated but no allocation exists - fix it
+        await pool
+          .request()
+          .input('positionId', position.ID)
+          .query("UPDATE dbo.Positions SET Allocated = 'No' WHERE ID = @positionId");
+        
+        changes.push({
+          action: 'fixed_false_allocation',
+          positionId: position.ID,
+          positionName: position.PositionName,
+          details: `Position was marked as allocated but no allocation entry exists in dbo.Allocation - set to unallocated`
+        });
+      } else if (position.Allocated === 'No' && hasAllocation) {
+        // Position marked as unallocated but allocation exists - fix it
+        await pool
+          .request()
+          .input('positionId', position.ID)
+          .query("UPDATE dbo.Positions SET Allocated = 'Yes' WHERE ID = @positionId");
+        
+        changes.push({
+          action: 'fixed_missing_allocation_flag',
+          positionId: position.ID,
+          positionName: position.PositionName,
+          details: `Position was marked as unallocated but allocation entry exists in dbo.Allocation - set to allocated`
+        });
+      }
+    }
+    
+    res.json({
+      success: true,
+      totalPositions: positions.length,
+      totalAllocations: allocations.length,
+      changesCount: changes.length,
+      changes
+    });
+    
+  } catch (error: any) {
+    console.error('Error validating position allocations:', error);
+    res.status(500).json({ error: 'Failed to validate position allocations', details: error.message });
+  }
+});
+
 // Get all positions
 router.get('/', async (req, res) => {
   try {

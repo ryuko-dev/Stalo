@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { 
   Box, 
   Typography, 
@@ -38,10 +38,12 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getPositions, createPosition, updatePosition, deletePosition, getProjects } from '../services/staloService';
+import { getPositions, createPosition, updatePosition, deletePosition, getProjects, getResources, createAllocation, getAllocations, deleteAllocation, validatePositionAllocations } from '../services/staloService';
 import type { Position } from '../types';
 import type { Project } from '../types';
-import { format } from 'date-fns';
+import type { Resource } from '../types';
+import type { Allocation } from '../types';
+import { format, isWithinInterval, isBefore, isAfter, addMonths, startOfMonth, endOfMonth } from 'date-fns';
 
 export default function Positions() {
   const queryClient = useQueryClient();
@@ -54,6 +56,11 @@ export default function Positions() {
   const [filterStatus, setFilterStatus] = useState<'all' | 'allocated' | 'unallocated'>('all');
   const [filterProject, setFilterProject] = useState<string>('all');
   const [editingPosition, setEditingPosition] = useState<Position | null>(null);
+  
+  // Month range filter with default 3 months before and 9 months after today
+  const today = new Date();
+  const [startMonth, setStartMonth] = useState<Date>(addMonths(today, -3));
+  const [endMonth, setEndMonth] = useState<Date>(addMonths(today, 9));
 
   const showNotification = (message: string, severity: 'success' | 'error' = 'success') => {
     setNotification({ open: true, message, severity });
@@ -68,6 +75,18 @@ export default function Positions() {
   const { data: projectsData } = useQuery<Project[], Error>({ 
     queryKey: ['projects'], 
     queryFn: getProjects, 
+    staleTime: 1000 * 60 * 5 
+  });
+
+  const { data: resourcesData } = useQuery<Resource[], Error>({ 
+    queryKey: ['resources'], 
+    queryFn: getResources, 
+    staleTime: 1000 * 60 * 5 
+  });
+
+  const { data: allocationsData } = useQuery<Allocation[], Error>({ 
+    queryKey: ['allocations'], 
+    queryFn: getAllocations, 
     staleTime: 1000 * 60 * 5 
   });
 
@@ -104,6 +123,79 @@ export default function Positions() {
     }
   });
 
+  const allocateMutation = useMutation<any, Error, { positionId: string; resourceId: string; existingAllocationId?: string }>({
+    mutationFn: async ({ positionId, resourceId, existingAllocationId }) => {
+      // First, remove any existing allocation for this position
+      if (existingAllocationId) {
+        await deleteAllocation(existingAllocationId);
+      }
+      
+      // Find the position and resource
+      const position = positions.find(p => p.ID === positionId);
+      const resource = resources.find(r => r.ID === resourceId);
+      
+      if (!position || !resource) {
+        throw new Error('Position or resource not found');
+      }
+      
+      // Convert LoE to percentage if position is in days mode
+      let percentageLoE = position.LoE || 0;
+      const normalizedMode = position?.AllocationMode?.toLowerCase()?.trim();
+      const isDaysMode = normalizedMode === 'days' || normalizedMode === 'day';
+      
+      // If position is in days mode, convert to percentage (20 days = 100%)
+      if (isDaysMode) {
+        percentageLoE = Math.round((position.LoE / 20) * 100);
+      }
+      
+      // Create allocation with converted percentage value and PositionID
+      const allocationData = {
+        PositionID: position.ID, // Always include PositionID for precise lookup
+        ProjectName: position.ProjectName || '',
+        PositionName: position.PositionName,
+        ResourceName: resource.Name,
+        MonthYear: position.MonthYear,
+        AllocationMode: '%', // Always store as percentage mode
+        LoE: percentageLoE, // Store as percentage
+      };
+      
+      const result = await createAllocation(allocationData);
+      
+      // Update the position's Allocated status to 'Yes'
+      await updatePosition(positionId, { Allocated: 'Yes' });
+      
+      return result;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['positions'] });
+      queryClient.invalidateQueries({ queryKey: ['allocations'] });
+      showNotification('Position allocated successfully!', 'success');
+    },
+    onError: (error) => {
+      showNotification(`Error allocating position: ${error.message}`, 'error');
+    }
+  });
+
+  const deallocateMutation = useMutation<any, Error, { positionId: string; allocationId: string }>({
+    mutationFn: async ({ allocationId, positionId }) => {
+      // Delete the allocation
+      await deleteAllocation(allocationId);
+      
+      // Update the position's Allocated status to 'No'
+      if (positionId) {
+        await updatePosition(positionId, { Allocated: 'No' });
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['positions'] });
+      queryClient.invalidateQueries({ queryKey: ['allocations'] });
+      showNotification('Position deallocated successfully!', 'success');
+    },
+    onError: (error) => {
+      showNotification(`Error deallocating position: ${error.message}`, 'error');
+    }
+  });
+
   const [newPosition, setNewPosition] = useState<Partial<Position>>({
     Project: '',
     TaskID: '',
@@ -116,6 +208,35 @@ export default function Positions() {
 
   const positions = positionsData ?? [];
   const projects = projectsData ?? [];
+  const resources = resourcesData ?? [];
+  const allocations = allocationsData ?? [];
+
+  // Validate position allocations on page load/refresh
+  // This ensures the Allocated flag matches actual allocation entries in dbo.Allocation
+  useEffect(() => {
+    const runValidation = async () => {
+      try {
+        console.log('Running position allocation validation...');
+        const result = await validatePositionAllocations();
+        
+        if (result.changesCount > 0) {
+          console.log('Position allocation validation made changes:', result);
+          // Refresh data if changes were made
+          queryClient.invalidateQueries({ queryKey: ['positions'] });
+          queryClient.invalidateQueries({ queryKey: ['allocations'] });
+        } else {
+          console.log('Position allocation validation: no changes needed');
+        }
+      } catch (error) {
+        console.error('Position allocation validation failed:', error);
+      }
+    };
+
+    // Run validation when positions data is loaded
+    if (positionsData && positionsData.length >= 0) {
+      runValidation();
+    }
+  }, []); // Run once on mount
 
   // Filter positions based on search and status
   const filteredPositions = useMemo(() => {
@@ -127,13 +248,22 @@ export default function Positions() {
         
         const matchesProject = filterProject === 'all' || position.Project === filterProject;
         
+        // Check if position's month is within the selected range
+        const matchesMonthRange = !position.MonthYear || isWithinInterval(
+          new Date(position.MonthYear),
+          { start: startOfMonth(startMonth), end: endOfMonth(endMonth) }
+        );
+        
+        // Check if there's an allocation for this position using PositionID only
+        const hasAllocation = allocations.some(a => a.PositionID === position.ID);
+        
         switch (filterStatus) {
           case 'allocated':
-            return matchesSearch && matchesProject && position.Allocated === 'Yes';
+            return matchesSearch && matchesProject && matchesMonthRange && hasAllocation;
           case 'unallocated':
-            return matchesSearch && matchesProject && position.Allocated === 'No';
+            return matchesSearch && matchesProject && matchesMonthRange && !hasAllocation;
           default:
-            return matchesSearch && matchesProject;
+            return matchesSearch && matchesProject && matchesMonthRange;
         }
       })
       .sort((a, b) => {
@@ -142,7 +272,7 @@ export default function Positions() {
         const dateB = b.MonthYear ? new Date(b.MonthYear).getTime() : 0;
         return dateB - dateA; // Descending order (latest first)
       });
-  }, [positions, searchTerm, filterStatus, filterProject]);
+  }, [positions, searchTerm, filterStatus, filterProject, allocations, startMonth, endMonth]);
 
   const handleCreate = () => {
     if (!newPosition.Project || !newPosition.TaskID || !newPosition.PositionName || !newPosition.MonthYear) {
@@ -555,6 +685,34 @@ export default function Positions() {
                     </Select>
                   </FormControl>
                 </Box>
+                <Box sx={{ flex: '0 1 120px', minWidth: '120px' }}>
+                  <DatePicker
+                    label="From"
+                    value={startMonth}
+                    onChange={(date) => date && setStartMonth(date)}
+                    views={['year', 'month']}
+                    slotProps={{
+                      textField: {
+                        size: 'small',
+                        sx: { fontSize: '0.75rem' }
+                      }
+                    }}
+                  />
+                </Box>
+                <Box sx={{ flex: '0 1 120px', minWidth: '120px' }}>
+                  <DatePicker
+                    label="To"
+                    value={endMonth}
+                    onChange={(date) => date && setEndMonth(date)}
+                    views={['year', 'month']}
+                    slotProps={{
+                      textField: {
+                        size: 'small',
+                        sx: { fontSize: '0.75rem' }
+                      }
+                    }}
+                  />
+                </Box>
                 <Box sx={{ flex: '0 1 auto' }}>
                   <Typography variant="body2" color="text.secondary">
                     {filteredPositions.length} of {positions.length} positions
@@ -574,13 +732,14 @@ export default function Positions() {
                     <TableCell sx={{ fontSize: '0.7rem', fontWeight: 'bold', p: 0.5 }}>Mode</TableCell>
                     <TableCell sx={{ fontSize: '0.7rem', fontWeight: 'bold', p: 0.5 }}>LoE</TableCell>
                     <TableCell sx={{ fontSize: '0.7rem', fontWeight: 'bold', p: 0.5 }}>Allocated</TableCell>
+                    <TableCell sx={{ fontSize: '0.7rem', fontWeight: 'bold', p: 0.5 }}>Resource</TableCell>
                     <TableCell sx={{ fontSize: '0.7rem', fontWeight: 'bold', p: 0.5, textAlign: 'center' }}>Actions</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {filteredPositions.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} align="center" sx={{ py: 2 }}>
+                      <TableCell colSpan={9} align="center" sx={{ py: 2 }}>
                         <Typography variant="body2" color="text.secondary">
                           {positions.length === 0 ? 'No positions found. Create your first position above!' : 'No positions match your filters.'}
                         </Typography>
@@ -621,8 +780,79 @@ export default function Positions() {
                         </TableCell>
                         <TableCell sx={{ p: 0.5 }}>
                           <Typography variant="caption" sx={{ fontSize: '0.7rem' }}>
-                            {position.Allocated || 'No'}
+                            {(() => {
+                              // Check if there's an allocation for this specific position using PositionID only
+                              const hasAllocation = allocations.some(a => a.PositionID === position.ID);
+                              return hasAllocation ? 'Yes' : 'No';
+                            })()}
                           </Typography>
+                        </TableCell>
+                        <TableCell sx={{ p: 0.5 }}>
+                          <FormControl fullWidth size="small">
+                            <Select
+                              value={(() => {
+                                // Find allocation for this specific position using PositionID only
+                                const allocation = allocations.find(a => a.PositionID === position.ID);
+                                return allocation?.ResourceID || "";
+                              })()}
+                              displayEmpty
+                              onChange={(e) => {
+                                const currentAllocation = allocations.find(a => a.PositionID === position.ID);
+                                
+                                if (e.target.value === "") {
+                                  // Deallocate if empty value selected
+                                  if (currentAllocation) {
+                                    deallocateMutation.mutate({
+                                      positionId: position.ID,
+                                      allocationId: currentAllocation.ID
+                                    });
+                                  }
+                                } else {
+                                  // Allocate to new resource (will automatically remove existing allocation)
+                                  allocateMutation.mutate({
+                                    positionId: position.ID,
+                                    resourceId: e.target.value,
+                                    existingAllocationId: currentAllocation?.ID
+                                  });
+                                }
+                              }}
+                              renderValue={(value) => {
+                                if (!value) {
+                                  return <span style={{ fontSize: '0.75rem' }}>Select resource</span>;
+                                }
+                                const resource = resources.find(r => r.ID === value);
+                                return <span style={{ fontSize: '0.75rem' }}>{resource?.Name || value}</span>;
+                              }}
+                              sx={{ fontSize: '0.75rem' }}
+                            >
+                              <MenuItem value="">
+                                <em style={{ fontSize: '0.75rem' }}>Clear allocation</em>
+                              </MenuItem>
+                              {resources
+                                .filter(resource => {
+                                  if (!position.MonthYear) return false;
+                                  
+                                  const positionMonth = new Date(position.MonthYear);
+                                  const positionMonthStart = new Date(positionMonth.getFullYear(), positionMonth.getMonth(), 1);
+                                  const positionMonthEnd = new Date(positionMonth.getFullYear(), positionMonth.getMonth() + 1, 0);
+                                  
+                                  const resourceStart = new Date(resource.StartDate);
+                                  const resourceEnd = resource.EndDate ? new Date(resource.EndDate) : null;
+                                  
+                                  // Check if resource is active during the position's month
+                                  return (
+                                    isWithinInterval(positionMonthStart, { start: resourceStart, end: resourceEnd || new Date('2099-12-31') }) ||
+                                    isWithinInterval(positionMonthEnd, { start: resourceStart, end: resourceEnd || new Date('2099-12-31') }) ||
+                                    (isBefore(resourceStart, positionMonthStart) && (!resourceEnd || isAfter(resourceEnd || new Date('2099-12-31'), positionMonthEnd)))
+                                  );
+                                })
+                                .map((resource) => (
+                                  <MenuItem key={resource.ID} value={resource.ID} sx={{ fontSize: '0.75rem' }}>
+                                    {resource.Name}
+                                  </MenuItem>
+                                ))}
+                            </Select>
+                          </FormControl>
                         </TableCell>
                         <TableCell sx={{ p: 0.5, textAlign: 'center' }}>
                           <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>

@@ -1,5 +1,5 @@
 import api from './api';
-import type { Project, Position, Resource, Allocation, MonthlyAllocationSummary, AllocationFormData } from '../types';
+import type { Project, Position, Resource, Allocation, MonthlyAllocationSummary, AllocationFormData, DragAllocationData } from '../types';
 import type { SystemUser, SystemUserUpdate, SystemUserCreate } from '../types/systemUsers';
 import type { Entity, EntityCreate, EntityUpdate } from '../types/entities';
 
@@ -64,6 +64,11 @@ export const getAllocations = async (): Promise<Allocation[]> => {
 };
 
 export const createAllocation = async (data: AllocationFormData): Promise<Allocation> => {
+  const response = await api.post('/allocations', data);
+  return response.data;
+};
+
+export const createDragAllocation = async (data: DragAllocationData): Promise<Allocation> => {
   const response = await api.post('/allocations', data);
   return response.data;
 };
@@ -134,6 +139,18 @@ export const getPositions = async (): Promise<Position[]> => {
   return response.data;
 };
 
+// Validate position allocations - ensures Allocated flag matches actual allocation entries
+export const validatePositionAllocations = async (): Promise<{
+  success: boolean;
+  totalPositions: number;
+  totalAllocations: number;
+  changesCount: number;
+  changes: { action: string; positionId: string; positionName: string; details: string }[];
+}> => {
+  const response = await api.post('/positions/validate-allocations');
+  return response.data;
+};
+
 export const getPosition = async (id: string): Promise<Position> => {
   const response = await api.get(`/positions/${id}`);
   return response.data;
@@ -151,6 +168,18 @@ export const updatePosition = async (id: string, data: Partial<Position>): Promi
 
 export const deletePosition = async (id: string): Promise<void> => {
   await api.delete(`/positions/${id}`);
+};
+
+// Validate positions for given months - ensures all positions appear exactly once
+export const validatePositions = async (monthYears: string[]): Promise<{
+  success: boolean;
+  totalPositions: number;
+  totalAllocations: number;
+  changesCount: number;
+  changes: { action: string; positionId: string; positionName: string; details: string }[];
+}> => {
+  const response = await api.post('/allocations/validate-positions', { monthYears });
+  return response.data;
 };
 
 // Resources CRUD

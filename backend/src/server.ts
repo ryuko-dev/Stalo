@@ -16,21 +16,7 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
-
-// Error handling middleware for JSON parsing errors
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  if (err instanceof SyntaxError && 'body' in err) {
-    console.error('JSON parsing error:', err);
-    console.error('Raw body that failed to parse:', req.body);
-    return res.status(400).json({ 
-      error: 'Invalid JSON format', 
-      details: err.message,
-      receivedBody: req.body 
-    });
-  }
-  next();
-});
+app.use(express.json());
 
 // Routes
 app.use('/api/projects', projectsRouter);
@@ -48,11 +34,13 @@ app.get('/api/health', (req, res) => {
 // Test database connection
 app.get('/api/db-test', async (req, res) => {
   try {
-    // Temporarily disable database test
-    res.json({ status: 'Database test disabled for debugging' });
+    const connection = await getConnection();
+    const result = await connection.request().query('SELECT 1 as test');
+    res.json({ status: 'Database connected successfully', result: result.recordset });
   } catch (error) {
     console.error('Database connection error:', error);
-    res.status(500).json({ error: 'Database connection failed' });
+    const errorMessage = error instanceof Error ? error.message : 'Unknown database error';
+    res.status(500).json({ error: 'Database connection failed', details: errorMessage });
   }
 });
 
