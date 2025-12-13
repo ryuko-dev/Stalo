@@ -38,12 +38,12 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getPositions, createPosition, updatePosition, deletePosition, getProjects, getResources, createAllocation, getAllocations, deleteAllocation, validatePositionAllocations } from '../services/staloService';
+import { getPositionsCombinedData, createPosition, updatePosition, deletePosition, createAllocation, deleteAllocation, validatePositionAllocations } from '../services/staloService';
+import type { PositionsCombinedData } from '../services/staloService';
 import type { Position } from '../types';
-import type { Project } from '../types';
 import type { Resource } from '../types';
 import type { Allocation } from '../types';
-import { format, isWithinInterval, isBefore, isAfter, addMonths, startOfMonth, endOfMonth } from 'date-fns';
+import { format, isWithinInterval, isBefore, isAfter, startOfMonth, endOfMonth } from 'date-fns';
 
 export default function Positions() {
   const queryClient = useQueryClient();
@@ -57,43 +57,41 @@ export default function Positions() {
   const [filterProject, setFilterProject] = useState<string>('all');
   const [editingPosition, setEditingPosition] = useState<Position | null>(null);
   
-  // Month range filter with default 3 months before and 9 months after today
+  // Single month filter - defaults to current month
   const today = new Date();
-  const [startMonth, setStartMonth] = useState<Date>(addMonths(today, -3));
-  const [endMonth, setEndMonth] = useState<Date>(addMonths(today, 9));
+  const [selectedMonth, setSelectedMonth] = useState<Date>(today);
 
   const showNotification = (message: string, severity: 'success' | 'error' = 'success') => {
     setNotification({ open: true, message, severity });
   };
 
-  const { data: positionsData } = useQuery<Position[], Error>({ 
-    queryKey: ['positions'], 
-    queryFn: getPositions, 
-    staleTime: 1000 * 60 * 5 
-  });
-  
-  const { data: projectsData } = useQuery<Project[], Error>({ 
-    queryKey: ['projects'], 
-    queryFn: getProjects, 
-    staleTime: 1000 * 60 * 5 
+  // Format dates for API query - memoized to avoid recalculation
+  // Using same month for start and end to filter to single month only
+  const dateParams = useMemo(() => ({
+    startMonth: format(selectedMonth, 'yyyy-MM'),
+    endMonth: format(selectedMonth, 'yyyy-MM')
+  }), [selectedMonth]);
+
+  // Single combined query for all data with server-side date filtering
+  // Query key includes date params so it refetches when date range changes
+  const { data: combinedData } = useQuery<PositionsCombinedData, Error>({ 
+    queryKey: ['positionsCombined', dateParams.startMonth, dateParams.endMonth], 
+    queryFn: () => getPositionsCombinedData(dateParams), 
+    staleTime: 1000 * 60 * 5,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false
   });
 
-  const { data: resourcesData } = useQuery<Resource[], Error>({ 
-    queryKey: ['resources'], 
-    queryFn: getResources, 
-    staleTime: 1000 * 60 * 5 
-  });
-
-  const { data: allocationsData } = useQuery<Allocation[], Error>({ 
-    queryKey: ['allocations'], 
-    queryFn: getAllocations, 
-    staleTime: 1000 * 60 * 5 
-  });
+  // Extract data from combined response
+  const positionsData = combinedData?.positions;
+  const projectsData = combinedData?.projects;
+  const resourcesData = combinedData?.resources;
+  const allocationsData = combinedData?.allocations;
 
   const createMutation = useMutation<Position, Error, Partial<Position>>({
     mutationFn: (payload) => createPosition(payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['positions'] });
+      queryClient.invalidateQueries({ queryKey: ['positionsCombined'] });
       showNotification('Position created successfully!', 'success');
     },
     onError: (error) => {
@@ -104,7 +102,7 @@ export default function Positions() {
   const updateMutation = useMutation<Position, Error, { id: string; payload: Partial<Position> }>({
     mutationFn: ({ id, payload }) => updatePosition(id, payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['positions'] });
+      queryClient.invalidateQueries({ queryKey: ['positionsCombined'] });
       showNotification('Position updated successfully!', 'success');
     },
     onError: (error) => {
@@ -115,7 +113,7 @@ export default function Positions() {
   const deleteMutation = useMutation<void, Error, string>({
     mutationFn: (id) => deletePosition(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['positions'] });
+      queryClient.invalidateQueries({ queryKey: ['positionsCombined'] });
       showNotification('Position deleted successfully!', 'success');
     },
     onError: (error) => {
@@ -167,8 +165,7 @@ export default function Positions() {
       return result;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['positions'] });
-      queryClient.invalidateQueries({ queryKey: ['allocations'] });
+      queryClient.invalidateQueries({ queryKey: ['positionsCombined'] });
       showNotification('Position allocated successfully!', 'success');
     },
     onError: (error) => {
@@ -187,8 +184,7 @@ export default function Positions() {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['positions'] });
-      queryClient.invalidateQueries({ queryKey: ['allocations'] });
+      queryClient.invalidateQueries({ queryKey: ['positionsCombined'] });
       showNotification('Position deallocated successfully!', 'success');
     },
     onError: (error) => {
@@ -211,51 +207,108 @@ export default function Positions() {
   const resources = resourcesData ?? [];
   const allocations = allocationsData ?? [];
 
-  // Validate position allocations on page load/refresh
-  // This ensures the Allocated flag matches actual allocation entries in dbo.Allocation
+  // OPTIMIZATION: Memoized allocation lookup maps for O(1) access instead of O(n)
+  const allocationsByPositionId = useMemo(() => {
+    const map = new Map<string, Allocation>();
+    allocations.forEach(a => map.set(a.PositionID, a));
+    return map;
+  }, [allocations]);
+
+  const allocatedPositionIds = useMemo(() => {
+    return new Set(allocations.map(a => a.PositionID));
+  }, [allocations]);
+
+  // OPTIMIZATION: Pre-compute valid resources by month to avoid repeated date calculations
+  const validResourcesByMonth = useMemo(() => {
+    const map = new Map<string, Resource[]>();
+    const uniqueMonths = new Set(positions.map(p => p.MonthYear).filter(Boolean));
+    
+    uniqueMonths.forEach(monthStr => {
+      const positionMonth = new Date(monthStr!);
+      const positionMonthStart = new Date(positionMonth.getFullYear(), positionMonth.getMonth(), 1);
+      const positionMonthEnd = new Date(positionMonth.getFullYear(), positionMonth.getMonth() + 1, 0);
+      
+      const validResources = resources.filter(resource => {
+        const resourceStart = new Date(resource.StartDate);
+        const resourceEnd = resource.EndDate ? new Date(resource.EndDate) : null;
+        
+        return (
+          isWithinInterval(positionMonthStart, { start: resourceStart, end: resourceEnd || new Date('2099-12-31') }) ||
+          isWithinInterval(positionMonthEnd, { start: resourceStart, end: resourceEnd || new Date('2099-12-31') }) ||
+          (isBefore(resourceStart, positionMonthStart) && (!resourceEnd || isAfter(resourceEnd, positionMonthEnd)))
+        );
+      });
+      
+      map.set(monthStr!, validResources);
+    });
+    
+    return map;
+  }, [positions, resources]);
+
+  // OPTIMIZATION: Resources lookup map for O(1) access
+  const resourcesById = useMemo(() => {
+    const map = new Map<string, Resource>();
+    resources.forEach(r => map.set(r.ID, r));
+    return map;
+  }, [resources]);
+
+  // Validation state - only runs when manually triggered or on first load
+  const [hasValidated, setHasValidated] = useState(false);
+
+  // Validate position allocations - runs once on initial load
   useEffect(() => {
     const runValidation = async () => {
+      if (hasValidated) return; // Skip if already validated this session
+      
       try {
         console.log('Running position allocation validation...');
         const result = await validatePositionAllocations();
         
         if (result.changesCount > 0) {
           console.log('Position allocation validation made changes:', result);
-          // Refresh data if changes were made
-          queryClient.invalidateQueries({ queryKey: ['positions'] });
-          queryClient.invalidateQueries({ queryKey: ['allocations'] });
+          queryClient.invalidateQueries({ queryKey: ['positionsCombined'] });
         } else {
           console.log('Position allocation validation: no changes needed');
         }
+        setHasValidated(true);
       } catch (error) {
         console.error('Position allocation validation failed:', error);
       }
     };
 
-    // Run validation when positions data is loaded
-    if (positionsData && positionsData.length >= 0) {
+    // Run validation only once when positions data is first loaded
+    if (positionsData && positionsData.length >= 0 && !hasValidated) {
       runValidation();
     }
-  }, []); // Run once on mount
+  }, [positionsData, hasValidated, queryClient]);
 
-  // Filter positions based on search and status
+  // OPTIMIZATION: Lowercase search term once, not per position
+  const searchTermLower = useMemo(() => searchTerm.toLowerCase(), [searchTerm]);
+
+  // OPTIMIZATION: Pre-compute date range boundaries once
+  const dateRangeBounds = useMemo(() => ({
+    start: startOfMonth(selectedMonth),
+    end: endOfMonth(selectedMonth)
+  }), [selectedMonth]);
+
+  // Filter positions based on search and status - uses optimized lookups
   const filteredPositions = useMemo(() => {
     return positions
       .filter(position => {
-        const matchesSearch = position.PositionName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                             position.TaskID.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                             (position.ProjectName?.toLowerCase().includes(searchTerm.toLowerCase()));
+        const matchesSearch = position.PositionName.toLowerCase().includes(searchTermLower) ||
+                             position.TaskID.toLowerCase().includes(searchTermLower) ||
+                             (position.ProjectName?.toLowerCase().includes(searchTermLower));
         
         const matchesProject = filterProject === 'all' || position.Project === filterProject;
         
         // Check if position's month is within the selected range
         const matchesMonthRange = !position.MonthYear || isWithinInterval(
           new Date(position.MonthYear),
-          { start: startOfMonth(startMonth), end: endOfMonth(endMonth) }
+          dateRangeBounds
         );
         
-        // Check if there's an allocation for this position using PositionID only
-        const hasAllocation = allocations.some(a => a.PositionID === position.ID);
+        // OPTIMIZATION: O(1) lookup instead of O(n) allocations.some()
+        const hasAllocation = allocatedPositionIds.has(position.ID);
         
         switch (filterStatus) {
           case 'allocated':
@@ -272,7 +325,7 @@ export default function Positions() {
         const dateB = b.MonthYear ? new Date(b.MonthYear).getTime() : 0;
         return dateB - dateA; // Descending order (latest first)
       });
-  }, [positions, searchTerm, filterStatus, filterProject, allocations, startMonth, endMonth]);
+  }, [positions, searchTermLower, filterStatus, filterProject, allocatedPositionIds, dateRangeBounds]);
 
   const handleCreate = () => {
     if (!newPosition.Project || !newPosition.TaskID || !newPosition.PositionName || !newPosition.MonthYear) {
@@ -685,25 +738,11 @@ export default function Positions() {
                     </Select>
                   </FormControl>
                 </Box>
-                <Box sx={{ flex: '0 1 120px', minWidth: '120px' }}>
+                <Box sx={{ flex: '0 1 150px', minWidth: '150px' }}>
                   <DatePicker
-                    label="From"
-                    value={startMonth}
-                    onChange={(date) => date && setStartMonth(date)}
-                    views={['year', 'month']}
-                    slotProps={{
-                      textField: {
-                        size: 'small',
-                        sx: { fontSize: '0.75rem' }
-                      }
-                    }}
-                  />
-                </Box>
-                <Box sx={{ flex: '0 1 120px', minWidth: '120px' }}>
-                  <DatePicker
-                    label="To"
-                    value={endMonth}
-                    onChange={(date) => date && setEndMonth(date)}
+                    label="Month"
+                    value={selectedMonth}
+                    onChange={(date) => date && setSelectedMonth(date)}
                     views={['year', 'month']}
                     slotProps={{
                       textField: {
@@ -780,24 +819,17 @@ export default function Positions() {
                         </TableCell>
                         <TableCell sx={{ p: 0.5 }}>
                           <Typography variant="caption" sx={{ fontSize: '0.7rem' }}>
-                            {(() => {
-                              // Check if there's an allocation for this specific position using PositionID only
-                              const hasAllocation = allocations.some(a => a.PositionID === position.ID);
-                              return hasAllocation ? 'Yes' : 'No';
-                            })()}
+                            {/* OPTIMIZATION: O(1) lookup instead of O(n) */}
+                            {allocatedPositionIds.has(position.ID) ? 'Yes' : 'No'}
                           </Typography>
                         </TableCell>
                         <TableCell sx={{ p: 0.5 }}>
                           <FormControl fullWidth size="small">
                             <Select
-                              value={(() => {
-                                // Find allocation for this specific position using PositionID only
-                                const allocation = allocations.find(a => a.PositionID === position.ID);
-                                return allocation?.ResourceID || "";
-                              })()}
+                              value={allocationsByPositionId.get(position.ID)?.ResourceID || ""}
                               displayEmpty
                               onChange={(e) => {
-                                const currentAllocation = allocations.find(a => a.PositionID === position.ID);
+                                const currentAllocation = allocationsByPositionId.get(position.ID);
                                 
                                 if (e.target.value === "") {
                                   // Deallocate if empty value selected
@@ -820,7 +852,8 @@ export default function Positions() {
                                 if (!value) {
                                   return <span style={{ fontSize: '0.75rem' }}>Select resource</span>;
                                 }
-                                const resource = resources.find(r => r.ID === value);
+                                // OPTIMIZATION: O(1) lookup instead of O(n)
+                                const resource = resourcesById.get(value);
                                 return <span style={{ fontSize: '0.75rem' }}>{resource?.Name || value}</span>;
                               }}
                               sx={{ fontSize: '0.75rem' }}
@@ -828,24 +861,8 @@ export default function Positions() {
                               <MenuItem value="">
                                 <em style={{ fontSize: '0.75rem' }}>Clear allocation</em>
                               </MenuItem>
-                              {resources
-                                .filter(resource => {
-                                  if (!position.MonthYear) return false;
-                                  
-                                  const positionMonth = new Date(position.MonthYear);
-                                  const positionMonthStart = new Date(positionMonth.getFullYear(), positionMonth.getMonth(), 1);
-                                  const positionMonthEnd = new Date(positionMonth.getFullYear(), positionMonth.getMonth() + 1, 0);
-                                  
-                                  const resourceStart = new Date(resource.StartDate);
-                                  const resourceEnd = resource.EndDate ? new Date(resource.EndDate) : null;
-                                  
-                                  // Check if resource is active during the position's month
-                                  return (
-                                    isWithinInterval(positionMonthStart, { start: resourceStart, end: resourceEnd || new Date('2099-12-31') }) ||
-                                    isWithinInterval(positionMonthEnd, { start: resourceStart, end: resourceEnd || new Date('2099-12-31') }) ||
-                                    (isBefore(resourceStart, positionMonthStart) && (!resourceEnd || isAfter(resourceEnd || new Date('2099-12-31'), positionMonthEnd)))
-                                  );
-                                })
+                              {/* OPTIMIZATION: Pre-computed valid resources by month */}
+                              {(position.MonthYear ? validResourcesByMonth.get(position.MonthYear) || [] : [])
                                 .map((resource) => (
                                   <MenuItem key={resource.ID} value={resource.ID} sx={{ fontSize: '0.75rem' }}>
                                     {resource.Name}

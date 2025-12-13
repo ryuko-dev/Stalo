@@ -1,7 +1,4 @@
 import sql from 'mssql';
-import dotenv from 'dotenv';
-
-dotenv.config();
 
 const config: sql.config = {
   server: process.env.DB_SERVER || '',
@@ -15,8 +12,8 @@ const config: sql.config = {
     requestTimeout: 60000,
   },
   pool: {
-    max: 10,
-    min: 0,
+    max: 20,  // Increased from 10 for better concurrency
+    min: 2,   // Keep minimum connections warm
     idleTimeoutMillis: 30000,
   },
   connectionTimeout: 60000,

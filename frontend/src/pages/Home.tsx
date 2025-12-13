@@ -1,15 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { Box, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Dialog, DialogTitle, DialogContent, TextField, Button, Typography, ToggleButton, ToggleButtonGroup, Tooltip, IconButton } from '@mui/material';
-import { Download } from '@mui/icons-material';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Box, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Dialog, DialogTitle, DialogContent, TextField, Button, Typography, ToggleButton, ToggleButtonGroup, Tooltip, IconButton, FormControl, InputLabel, Select, MenuItem, LinearProgress } from '@mui/material';
+import { Download, FilterList, Close, Timeline } from '@mui/icons-material';
 import { addMonths, format, isAfter, isBefore, isWithinInterval, startOfMonth, endOfMonth } from 'date-fns';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getResources, getPositions, createAllocation, getAllocations, deleteAllocation, createDragAllocation, validatePositions } from '../services/staloService';
+import { getResources, getPositions, getProjects, createAllocation, getAllocations, deleteAllocation, createDragAllocation, validatePositions } from '../services/staloService';
+import type { Project } from '../types';
 import type { Resource } from '../types';
 import type { Position } from '../types';
 import type { Allocation } from '../types';
 import type { AllocationFormData } from '../types';
 import type { DragAllocationData } from '../types';
-import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import {
   DndContext,
@@ -35,11 +36,15 @@ interface MonthlyAllocationDialog {
 }
 
 export default function Home({ selectedDate }: HomeProps) {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const months = Array.from({ length: 9 }, (_, i) => addMonths(selectedDate, i));
 
   // Display mode state: 'percentage' or 'days'
   const [displayMode, setDisplayMode] = useState<'percentage' | 'days'>('percentage');
+
+  // Project filter state
+  const [selectedProjectFilter, setSelectedProjectFilter] = useState<string>('all');
 
   // Conversion function: percentage to days (100% = 20 days)
   const percentageToDays = (percentage: number): number => {
@@ -340,19 +345,33 @@ export default function Home({ selectedDate }: HomeProps) {
   const { data: resourcesData, isLoading } = useQuery<Resource[], Error>({
     queryKey: ['resources'],
     queryFn: getResources,
-    staleTime: 1000 * 60 * 5
+    staleTime: 1000 * 60 * 5,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false
   });
 
   const { data: positionsData } = useQuery<Position[], Error>({
     queryKey: ['positions'],
     queryFn: getPositions,
-    staleTime: 1000 * 60 * 5
+    staleTime: 1000 * 60 * 5,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false
   });
 
   const { data: allocationsData } = useQuery<Allocation[], Error>({
     queryKey: ['allocations'],
     queryFn: getAllocations,
-    staleTime: 1000 * 60 * 5
+    staleTime: 1000 * 60 * 5,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false
+  });
+
+  const { data: projectsData } = useQuery<Project[], Error>({
+    queryKey: ['projects'],
+    queryFn: getProjects,
+    staleTime: 1000 * 60 * 5,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false
   });
 
   const createAllocationMutation = useMutation<Allocation, Error, AllocationFormData>({
@@ -408,6 +427,27 @@ export default function Home({ selectedDate }: HomeProps) {
   const resources = resourcesData ?? [];
   const positions = positionsData ?? [];
   const allocations = allocationsData ?? [];
+  const allProjects = projectsData ?? [];
+
+  // Filter projects to only show those within the displayed months range
+  const projects = useMemo(() => {
+    if (!allProjects.length || !months.length) return [];
+    
+    const displayStart = startOfMonth(months[0]);
+    const displayEnd = endOfMonth(months[months.length - 1]);
+    
+    return allProjects.filter(project => {
+      if (!project.StartDate) return false;
+      
+      const projectStart = new Date(project.StartDate);
+      const projectEnd = project.EndDate ? new Date(project.EndDate) : new Date('2099-12-31');
+      
+      // Project is visible if its date range overlaps with the displayed months
+      return (
+        (projectStart <= displayEnd && projectEnd >= displayStart)
+      );
+    });
+  }, [allProjects, months]);
 
   // Validate positions on page load/refresh to ensure data integrity
   // This runs once when the component mounts and when months change
@@ -517,57 +557,187 @@ export default function Home({ selectedDate }: HomeProps) {
   };
 
   // Filter resources based on date range overlap with displayed months
-  const filteredResources = resources.filter(resource => {
-    if (!resource.StartDate) return false;
-    
-    const resourceStart = new Date(resource.StartDate);
-    const resourceEnd = resource.EndDate ? new Date(resource.EndDate) : null;
+  // Memoized to prevent recalculation on every render
+  const filteredResources = useMemo(() => {
+    return resources.filter(resource => {
+      if (!resource.StartDate) return false;
+      
+      const resourceStart = new Date(resource.StartDate);
+      const resourceEnd = resource.EndDate ? new Date(resource.EndDate) : null;
 
-    // Check if at least one month in the table falls within the resource's Start/End range (inclusive)
-    for (const month of months) {
+      // Check if at least one month in the table falls within the resource's Start/End range (inclusive)
+      let isDateInRange = false;
+      for (const month of months) {
+        const monthStart = startOfMonth(month);
+        const monthEnd = endOfMonth(month);
+        
+        // Check if this month is within the resource's active period
+        const isMonthInRange = isWithinInterval(monthStart, { start: resourceStart, end: resourceEnd || new Date('2099-12-31') }) ||
+                               isWithinInterval(monthEnd, { start: resourceStart, end: resourceEnd || new Date('2099-12-31') }) ||
+                               (isBefore(resourceStart, monthStart) && (!resourceEnd || isAfter(resourceEnd || new Date('2099-12-31'), monthEnd)));
+        
+        if (isMonthInRange) {
+          isDateInRange = true;
+          break;
+        }
+      }
+      
+      if (!isDateInRange) return false;
+
+      // If a project filter is selected, only show resources that have allocations for that project
+      if (selectedProjectFilter !== 'all') {
+        const hasAllocationForProject = allocations.some(
+          a => a.ResourceID === resource.ID && a.ProjectID === selectedProjectFilter
+        );
+        return hasAllocationForProject;
+      }
+      
+      return true;
+    });
+  }, [resources, months, selectedProjectFilter, allocations]);
+
+  // Group filtered resources by department - memoized
+  const resourcesByDepartment = useMemo(() => {
+    return filteredResources.reduce((acc, resource) => {
+      const department = resource.Department || 'Unknown Department';
+      if (!acc[department]) {
+        acc[department] = [];
+      }
+      acc[department].push(resource);
+      return acc;
+    }, {} as Record<string, typeof filteredResources>);
+  }, [filteredResources]);
+
+  // Filter unallocated positions and group by month - memoized
+  const unallocatedPositionsByMonth = useMemo(() => {
+    return months.map(month => {
       const monthStart = startOfMonth(month);
       const monthEnd = endOfMonth(month);
       
-      // Check if this month is within the resource's active period
-      const isMonthInRange = isWithinInterval(monthStart, { start: resourceStart, end: resourceEnd || new Date('2099-12-31') }) ||
-                             isWithinInterval(monthEnd, { start: resourceStart, end: resourceEnd || new Date('2099-12-31') }) ||
-                             (isBefore(resourceStart, monthStart) && (!resourceEnd || isAfter(resourceEnd || new Date('2099-12-31'), monthEnd)));
-      
-      if (isMonthInRange) {
-        return true; // Resource should appear if at least one month is in range
-      }
-    }
+      return positions
+        .filter(position => {
+          if (!position.MonthYear || position.Allocated !== 'No') return false;
+          
+          const positionMonth = startOfMonth(new Date(position.MonthYear));
+          const isInMonth = isWithinInterval(positionMonth, { start: monthStart, end: monthEnd });
+          
+          if (!isInMonth) return false;
+          
+          // If a project filter is selected, only show positions for that project
+          if (selectedProjectFilter !== 'all') {
+            return position.Project === selectedProjectFilter;
+          }
+          
+          return true;
+        })
+        .sort((a, b) => a.PositionName.localeCompare(b.PositionName)); // Sort by position name
+    });
+  }, [months, positions, selectedProjectFilter]);
+
+  // Excel Export Function for Monthly Allocation Dialog
+  const exportMonthlyAllocationToExcel = async () => {
+    // Dynamically import XLSX only when needed
+    const XLSX = await import('xlsx');
     
-    return false; // Don't show resource if no months are in range
-  });
-
-  // Group filtered resources by department
-  const resourcesByDepartment = filteredResources.reduce((acc, resource) => {
-    const department = resource.Department || 'Unknown Department';
-    if (!acc[department]) {
-      acc[department] = [];
-    }
-    acc[department].push(resource);
-    return acc;
-  }, {} as Record<string, typeof filteredResources>);
-
-  // Filter unallocated positions and group by month
-  const unallocatedPositionsByMonth = months.map(month => {
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+    
+    // Get the selected month
+    const month = months[monthlyAllocationDialog.monthIndex];
     const monthStart = startOfMonth(month);
     const monthEnd = endOfMonth(month);
     
-    return positions
-      .filter(position => {
-        if (!position.MonthYear || position.Allocated !== 'No') return false;
+    // Get unique projects for this month
+    const monthProjects = [...new Set(
+      allocations
+        .filter(a => {
+          const allocationDate = new Date(a.MonthYear);
+          return isWithinInterval(allocationDate, { start: monthStart, end: monthEnd });
+        })
+        .map(a => a.ProjectName || 'Unknown Project')
+    )];
+    
+    // Prepare data for the monthly allocation sheet
+    const allocationData: any[] = [];
+    
+    // Add header row
+    const headers = ['Resource Name', 'Department', ...monthProjects, 'Total'];
+    allocationData.push(headers);
+    
+    // Add department and resource rows
+    Object.entries(resourcesByDepartment).forEach(([department, deptResources]) => {
+      // Add department header
+      allocationData.push([department, '', ...Array(monthProjects.length + 1).fill('')]);
+      
+      // Add resources in this department
+      deptResources.forEach(resource => {
+        const resourceRow = [resource.Name, resource.Department || ''];
         
-        const positionMonth = startOfMonth(new Date(position.MonthYear));
-        return isWithinInterval(positionMonth, { start: monthStart, end: monthEnd });
-      })
-      .sort((a, b) => a.PositionName.localeCompare(b.PositionName)); // Sort by position name
-  });
+        // Get allocations for this resource and month
+        const resourceAllocations = allocations.filter(a => 
+          a.ResourceID === resource.ID &&
+          (() => {
+            const allocationDate = new Date(a.MonthYear);
+            return isWithinInterval(allocationDate, { start: monthStart, end: monthEnd });
+          })()
+        );
+        
+        // Add allocation data for each project
+        monthProjects.forEach(project => {
+          const allocation = resourceAllocations.find(a => a.ProjectName === project);
+          if (allocation) {
+            let displayValue;
+            if (displayMode === 'days') {
+              displayValue = percentageToDays(allocation.LoE); // Convert % to days
+            } else {
+              displayValue = allocation.LoE; // Already in %
+            }
+            resourceRow.push(displayMode === 'days' ? `${displayValue}d` : `${displayValue}%`);
+          } else {
+            resourceRow.push('-');
+          }
+        });
+        
+        // Add total
+        const totalLoE = resourceAllocations.reduce((sum, a) => sum + a.LoE, 0);
+        if (totalLoE > 0) {
+          let totalDisplayValue;
+          if (displayMode === 'days') {
+            totalDisplayValue = resourceAllocations.reduce((sum, a) => sum + percentageToDays(a.LoE), 0);
+          } else {
+            totalDisplayValue = totalLoE;
+          }
+          resourceRow.push(displayMode === 'days' ? `${totalDisplayValue}d` : `${totalDisplayValue}%`);
+        } else {
+          resourceRow.push('-');
+        }
+        
+        allocationData.push(resourceRow);
+      });
+    });
+    
+    // Create worksheet
+    const ws = XLSX.utils.aoa_to_sheet(allocationData);
+    
+    // Set column widths
+    const colWidths = [20, 15, ...Array(monthProjects.length).fill(15), 10];
+    ws['!cols'] = colWidths.map(w => ({ width: w }));
+    
+    // Add worksheet to workbook
+    XLSX.utils.book_append_sheet(wb, ws, `Monthly Allocation ${format(month, 'MMM yyyy')}`);
+    
+    // Generate Excel file and download
+    const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const fileName = `Monthly_Allocation_${format(month, 'yyyy-MM')}_${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
+    saveAs(data, fileName);
+  };
 
-  // Excel Export Function
-  const exportToExcel = () => {
+  // Excel Export Function - dynamically loads XLSX to reduce initial bundle size
+  const exportToExcel = async () => {
+    // Dynamically import XLSX only when needed (~1MB library)
+    const XLSX = await import('xlsx');
+    
     // Create workbook
     const wb = XLSX.utils.book_new();
     
@@ -702,6 +872,41 @@ export default function Home({ selectedDate }: HomeProps) {
           Resource Allocation Table
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <FormControl size="small" sx={{ minWidth: 200 }}>
+            <InputLabel id="project-filter-label">
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <FilterList sx={{ fontSize: 18 }} />
+                Project Filter
+              </Box>
+            </InputLabel>
+            <Select
+              labelId="project-filter-label"
+              value={selectedProjectFilter}
+              label="Project Filter"
+              onChange={(e) => setSelectedProjectFilter(e.target.value)}
+              sx={{ backgroundColor: 'white' }}
+            >
+              <MenuItem value="all">All Projects</MenuItem>
+              {projects.map((project) => (
+                <MenuItem key={project.ID} value={project.ID}>
+                  {project.Name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <Tooltip title="Open Gantt Chart">
+            <IconButton
+              onClick={() => navigate('/gantt')}
+              sx={{
+                backgroundColor: 'white',
+                border: '1px solid rgba(0,0,0,0.12)',
+                '&:hover': { backgroundColor: '#f3f4f6' },
+                p: 1,
+              }}
+            >
+              <Timeline />
+            </IconButton>
+          </Tooltip>
           <ToggleButtonGroup
             value={displayMode}
             exclusive
@@ -1319,60 +1524,91 @@ export default function Home({ selectedDate }: HomeProps) {
         onClose={() => setMonthlyAllocationDialog({ ...monthlyAllocationDialog, open: false })} 
         maxWidth="xl" 
         fullWidth
+        fullScreen
         sx={{ '& .MuiDialog-paper': { p: 2 } }}
       >
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>Monthly Allocation View - {monthlyAllocationDialog.monthYear}</span>
-          <ToggleButtonGroup
-            value={displayMode}
-            exclusive
-            onChange={(_: React.MouseEvent<HTMLElement>, value: 'percentage' | 'days' | null) => value && setDisplayMode(value)}
-            size="small"
-            sx={{
-              '& .MuiToggleButton-root': {
-                px: 2,
-                py: 0.5,
-                fontSize: '0.875rem',
-                fontWeight: 500,
-                border: '1px solid rgba(0, 0, 0, 0.23)',
-                '&:not(:first-of-type)': {
-                  borderRadius: '0 4px 4px 0',
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <ToggleButtonGroup
+              value={displayMode}
+              exclusive
+              onChange={(_: React.MouseEvent<HTMLElement>, value: 'percentage' | 'days' | null) => value && setDisplayMode(value)}
+              size="small"
+              sx={{
+                '& .MuiToggleButton-root': {
+                  px: 2,
+                  py: 0.5,
+                  fontSize: '0.875rem',
+                  fontWeight: 500,
+                  border: '1px solid rgba(0, 0, 0, 0.23)',
+                  '&:not(:first-of-type)': {
+                    borderRadius: '0 4px 4px 0',
+                  },
+                  '&:first-of-type': {
+                    borderRadius: '4px 0 0 4px',
+                  },
+                  '&.Mui-selected': {
+                    backgroundColor: '#3b82f6',
+                    color: 'white',
+                    '&:hover': {
+                      backgroundColor: '#2563eb',
+                    },
+                  },
+                  '&:not(.Mui-selected)': {
+                    backgroundColor: 'white',
+                    color: '#374151',
+                    '&:hover': {
+                      backgroundColor: '#f3f4f6',
+                    },
+                  },
                 },
-                '&:first-of-type': {
-                  borderRadius: '4px 0 0 4px',
-                },
-                '&.Mui-selected': {
-                  backgroundColor: '#3b82f6',
+              }}
+            >
+              <ToggleButton value="percentage">
+                %
+              </ToggleButton>
+              <ToggleButton value="days">
+                Days
+              </ToggleButton>
+            </ToggleButtonGroup>
+            <Tooltip title="Download to Excel">
+              <IconButton 
+                onClick={exportMonthlyAllocationToExcel}
+                sx={{ 
+                  backgroundColor: 'primary.main',
                   color: 'white',
                   '&:hover': {
-                    backgroundColor: '#2563eb',
-                  },
-                },
-                '&:not(.Mui-selected)': {
-                  backgroundColor: 'white',
-                  color: '#374151',
+                    backgroundColor: 'primary.dark',
+                  }
+                }}
+              >
+                <Download />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Close">
+              <IconButton 
+                onClick={() => setMonthlyAllocationDialog({ ...monthlyAllocationDialog, open: false })}
+                sx={{ 
+                  backgroundColor: 'grey.600',
+                  color: 'white',
                   '&:hover': {
-                    backgroundColor: '#f3f4f6',
-                  },
-                },
-              },
-            }}
-          >
-            <ToggleButton value="percentage">
-              %
-            </ToggleButton>
-            <ToggleButton value="days">
-              Days
-            </ToggleButton>
-          </ToggleButtonGroup>
+                    backgroundColor: 'grey.700',
+                  }
+                }}
+              >
+                <Close />
+              </IconButton>
+            </Tooltip>
+          </Box>
         </DialogTitle>
-        <DialogContent sx={{ p: 2 }}>
+        <DialogContent sx={{ p: 0 }}>
           <Box sx={{ maxHeight: '70vh', overflow: 'auto' }}>
             <TableContainer component={Paper}>
-              <Table size="small">
+              <Table size="small" sx={{ '& .MuiTableCell-root': { py: 0, px: 0 }, '& .MuiTableRow-root': { height: 'auto' } }}>
                 <TableHead>
                   <TableRow>
-                    <TableCell sx={{ width: '150px', minWidth: '150px' }}><strong>Resource</strong></TableCell>
+                    <TableCell sx={{ width: '150px', minWidth: '150px', py: 0, px: 0 }}><strong>Resource</strong></TableCell>
                     {(() => {
                       // Get unique projects for this month
                       const month = months[monthlyAllocationDialog.monthIndex];
@@ -1393,12 +1629,12 @@ export default function Home({ selectedDate }: HomeProps) {
                       )];
                       
                       return monthProjects.map((project, idx) => (
-                        <TableCell key={idx} align="center" sx={{ width: '120px', minWidth: '120px' }}>
+                        <TableCell key={idx} align="center" sx={{ width: '120px', minWidth: '120px', py: 0, px: 0 }}>
                           <strong>{project}</strong>
                         </TableCell>
                       ));
                     })()}
-                    <TableCell align="center" sx={{ width: '100px', minWidth: '100px' }}><strong>Total</strong></TableCell>
+                    <TableCell align="center" sx={{ width: '100px', minWidth: '100px', py: 0, px: 0 }}><strong>Total</strong></TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -1412,7 +1648,8 @@ export default function Home({ selectedDate }: HomeProps) {
                             backgroundColor: 'grey.100', 
                             fontWeight: 'bold',
                             fontSize: '0.9rem',
-                            p: 1
+                            py: 0,
+                            px: 0
                           }}
                         >
                           {department}
@@ -1451,7 +1688,7 @@ export default function Home({ selectedDate }: HomeProps) {
                         
                         return (
                           <TableRow key={resource.ID} hover>
-                            <TableCell component="th" scope="row" sx={{ pl: 3 }}>
+                            <TableCell component="th" scope="row" sx={{ pl: 3, py: 0, px: 0 }}>
                               {resource.Name}
                             </TableCell>
                             {monthProjects.map((project) => {
@@ -1460,10 +1697,11 @@ export default function Home({ selectedDate }: HomeProps) {
                                 return a.ProjectName === project;
                               });
                               return (
-                                <TableCell key={project} align="center" sx={{ p: 0.5 }}>
+                                <TableCell key={project} align="center" sx={{ p: 0.5, py: 0, px: 0 }}>
                                   {allocation ? (
                                     <Box sx={{ 
-                                      backgroundColor: '#e8f5e8', 
+                                      backgroundColor: '#1976d2', // professional blue
+                                      color: 'white',
                                       p: 0.5, 
                                       borderRadius: 0.5,
                                       fontSize: '0.7rem',
@@ -1488,35 +1726,61 @@ export default function Home({ selectedDate }: HomeProps) {
                                 </TableCell>
                               );
                             })}
-                            <TableCell align="center" sx={{ p: 0.5 }}>
+                            <TableCell align="center" sx={{ p: 0.5, py: 0, px: 0, width: '120px', minWidth: '120px' }}>
                               {totalLoE > 0 ? (
-                                <Box sx={{ 
-                                  backgroundColor: displayMode === 'days' 
-                                    ? (percentageToDays(totalLoE) >= 18 && percentageToDays(totalLoE) <= 22 ? '#e8f5e8' : percentageToDays(totalLoE) > 22 ? '#ffebee' : '#fff3e0')
-                                    : (totalLoE >= 90 && totalLoE <= 110 ? '#e8f5e8' : totalLoE > 110 ? '#ffebee' : '#fff3e0'),
-                                  p: 0.5, 
-                                  borderRadius: 0.5,
-                                  fontSize: '0.7rem',
-                                  fontWeight: 'bold'
-                                }}>
-                                  {(() => {
-                                // All allocations are stored as percentages in the database
-                                // Convert total to the selected display mode
-                                let totalDisplayValue;
-                                if (displayMode === 'days') {
-                                  // Convert total percentage to days
-                                  totalDisplayValue = resourceAllocations.reduce((sum, a) => {
-                                    return sum + percentageToDays(a.LoE); // Convert % to days
-                                  }, 0);
-                                } else {
-                                  // Sum percentages
-                                  totalDisplayValue = resourceAllocations.reduce((sum, a) => {
-                                    return sum + a.LoE; // Already in %
-                                  }, 0);
-                                }
-                                
-                                return displayMode === 'days' ? `${totalDisplayValue}d` : `${totalDisplayValue}%`;
-                              })()}
+                                <Box sx={{ position: 'relative', width: '100%' }}>
+                                  <LinearProgress 
+                                    variant="determinate" 
+                                    value={Math.min(totalLoE, 100)} // Cap at 100% for visual display
+                                    sx={{
+                                      width: '100%',
+                                      height: 20,
+                                      borderRadius: 2,
+                                      backgroundColor: 'grey.300',
+                                      '& .MuiLinearProgress-bar': {
+                                        backgroundColor: displayMode === 'days' 
+                                          ? (percentageToDays(totalLoE) >= 18 && percentageToDays(totalLoE) <= 22 ? '#2e7d32' : percentageToDays(totalLoE) > 22 ? '#d32f2f' : '#f57c00')
+                                          : (totalLoE >= 90 && totalLoE <= 110 ? '#2e7d32' : totalLoE > 110 ? '#d32f2f' : '#f57c00'),
+                                        borderRadius: 2,
+                                      }
+                                    }}
+                                  />
+                                  <Typography 
+                                    variant="caption" 
+                                    sx={{ 
+                                      position: 'absolute',
+                                      top: 0,
+                                      left: 0,
+                                      right: 0,
+                                      bottom: 0,
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      fontSize: '0.7rem',
+                                      fontWeight: 'bold',
+                                      color: 'white',
+                                      textShadow: '0 0 2px rgba(0,0,0,0.5)'
+                                    }}
+                                  >
+                                    {(() => {
+                                      // All allocations are stored as percentages in the database
+                                      // Convert total to the selected display mode
+                                      let totalDisplayValue;
+                                      if (displayMode === 'days') {
+                                        // Convert total percentage to days
+                                        totalDisplayValue = resourceAllocations.reduce((sum, a) => {
+                                          return sum + percentageToDays(a.LoE); // Convert % to days
+                                        }, 0);
+                                      } else {
+                                        // Sum percentages
+                                        totalDisplayValue = resourceAllocations.reduce((sum, a) => {
+                                          return sum + a.LoE; // Already in %
+                                        }, 0);
+                                      }
+                                      
+                                      return displayMode === 'days' ? `${totalDisplayValue}d` : `${totalDisplayValue}%`;
+                                    })()}
+                                  </Typography>
                                 </Box>
                               ) : (
                                 '-'

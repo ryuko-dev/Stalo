@@ -26,6 +26,7 @@ import {
 import { 
   Delete as DeleteIcon,
   Edit as EditIcon,
+  Save as SaveIcon,
   Search as SearchIcon,
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon
@@ -654,7 +655,10 @@ function EntitiesManager() {
     Name: '', 
     CurrencyCode: '', 
     SSAccCode: '', 
-    TaxAccCode: '' 
+    TaxAccCode: '',
+    SSExpCode: '',
+    TaxExpCode: '',
+    SalExpCode: ''
   });
 
   const entities = entitiesData ?? [];
@@ -666,7 +670,10 @@ function EntitiesManager() {
         const matchesSearch = entity.Name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                              entity.CurrencyCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
                              entity.SSAccCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                             entity.TaxAccCode.toLowerCase().includes(searchTerm.toLowerCase());
+                             entity.TaxAccCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                             (entity.SSExpCode && entity.SSExpCode.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                             (entity.TaxExpCode && entity.TaxExpCode.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                             (entity.SalExpCode && entity.SalExpCode.toLowerCase().includes(searchTerm.toLowerCase()));
         
         return matchesSearch;
       })
@@ -686,7 +693,10 @@ function EntitiesManager() {
       Name: '', 
       CurrencyCode: '', 
       SSAccCode: '', 
-      TaxAccCode: '' 
+      TaxAccCode: '',
+      SSExpCode: '',
+      TaxExpCode: '',
+      SalExpCode: ''
     });
   };
 
@@ -696,7 +706,10 @@ function EntitiesManager() {
       Name: entity.Name,
       CurrencyCode: entity.CurrencyCode,
       SSAccCode: entity.SSAccCode,
-      TaxAccCode: entity.TaxAccCode
+      TaxAccCode: entity.TaxAccCode,
+      SSExpCode: entity.SSExpCode || '',
+      TaxExpCode: entity.TaxExpCode || '',
+      SalExpCode: entity.SalExpCode || ''
     });
   };
 
@@ -794,6 +807,15 @@ function EntitiesManager() {
             <Box sx={{ flex: '0 1 120px', minWidth: '120px' }}>
               <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#666' }}>TAX ACC CODE</Typography>
             </Box>
+            <Box sx={{ flex: '0 1 120px', minWidth: '120px' }}>
+              <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#666' }}>SS EXP CODE</Typography>
+            </Box>
+            <Box sx={{ flex: '0 1 120px', minWidth: '120px' }}>
+              <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#666' }}>TAX EXP CODE</Typography>
+            </Box>
+            <Box sx={{ flex: '0 1 120px', minWidth: '120px' }}>
+              <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#666' }}>SAL EXP CODE</Typography>
+            </Box>
             <Box sx={{ flex: '0 1 60px', minWidth: '60px' }}>
               <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#666' }}>ACTION</Typography>
             </Box>
@@ -841,6 +863,36 @@ function EntitiesManager() {
                 sx={{ '& .MuiInputBase-input': { fontSize: '0.75rem' } }}
               />
             </Box>
+            <Box sx={{ flex: '0 1 120px', minWidth: '120px' }}>
+              <TextField
+                fullWidth
+                size="small"
+                placeholder="SS expense code"
+                value={newEntity.SSExpCode || ''}
+                onChange={(e) => setNewEntity({ ...newEntity, SSExpCode: e.target.value })}
+                sx={{ '& .MuiInputBase-input': { fontSize: '0.75rem' } }}
+              />
+            </Box>
+            <Box sx={{ flex: '0 1 120px', minWidth: '120px' }}>
+              <TextField
+                fullWidth
+                size="small"
+                placeholder="Tax expense code"
+                value={newEntity.TaxExpCode || ''}
+                onChange={(e) => setNewEntity({ ...newEntity, TaxExpCode: e.target.value })}
+                sx={{ '& .MuiInputBase-input': { fontSize: '0.75rem' } }}
+              />
+            </Box>
+            <Box sx={{ flex: '0 1 120px', minWidth: '120px' }}>
+              <TextField
+                fullWidth
+                size="small"
+                placeholder="Salary expense code"
+                value={newEntity.SalExpCode || ''}
+                onChange={(e) => setNewEntity({ ...newEntity, SalExpCode: e.target.value })}
+                sx={{ '& .MuiInputBase-input': { fontSize: '0.75rem' } }}
+              />
+            </Box>
             <Box sx={{ flex: '0 1 60px', minWidth: '60px' }}>
               <Button 
                 variant="contained" 
@@ -880,13 +932,16 @@ function EntitiesManager() {
                     <TableCell sx={{ fontSize: '0.7rem', fontWeight: 'bold', p: 1 }}><strong>CURRENCY</strong></TableCell>
                     <TableCell sx={{ fontSize: '0.7rem', fontWeight: 'bold', p: 1 }}><strong>SS ACC CODE</strong></TableCell>
                     <TableCell sx={{ fontSize: '0.7rem', fontWeight: 'bold', p: 1 }}><strong>TAX ACC CODE</strong></TableCell>
+                    <TableCell sx={{ fontSize: '0.7rem', fontWeight: 'bold', p: 1 }}><strong>SS EXP CODE</strong></TableCell>
+                    <TableCell sx={{ fontSize: '0.7rem', fontWeight: 'bold', p: 1 }}><strong>TAX EXP CODE</strong></TableCell>
+                    <TableCell sx={{ fontSize: '0.7rem', fontWeight: 'bold', p: 1 }}><strong>SAL EXP CODE</strong></TableCell>
                     <TableCell sx={{ fontSize: '0.7rem', fontWeight: 'bold', p: 1 }}><strong>ACTIONS</strong></TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {filteredEntities.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} align="center" sx={{ fontSize: '0.75rem', p: 2 }}>
+                      <TableCell colSpan={8} align="center" sx={{ fontSize: '0.75rem', p: 2 }}>
                         No entities found.
                       </TableCell>
                     </TableRow>
@@ -951,6 +1006,48 @@ function EntitiesManager() {
                         </TableCell>
                         <TableCell sx={{ fontSize: '0.75rem', p: 1 }}>
                           {editingEntity === entity.ID ? (
+                            <TextField 
+                              size="small" 
+                              value={editEntityData.SSExpCode || ''}
+                              onChange={(e) => handleEntityEditFieldChange('SSExpCode', e.target.value)}
+                              sx={{ '& .MuiInputBase-input': { fontSize: '0.75rem' } }}
+                            />
+                          ) : (
+                            <Typography sx={{ fontSize: '0.75rem' }}>
+                              {entity.SSExpCode || ''}
+                            </Typography>
+                          )}
+                        </TableCell>
+                        <TableCell sx={{ fontSize: '0.75rem', p: 1 }}>
+                          {editingEntity === entity.ID ? (
+                            <TextField 
+                              size="small" 
+                              value={editEntityData.TaxExpCode || ''}
+                              onChange={(e) => handleEntityEditFieldChange('TaxExpCode', e.target.value)}
+                              sx={{ '& .MuiInputBase-input': { fontSize: '0.75rem' } }}
+                            />
+                          ) : (
+                            <Typography sx={{ fontSize: '0.75rem' }}>
+                              {entity.TaxExpCode || ''}
+                            </Typography>
+                          )}
+                        </TableCell>
+                        <TableCell sx={{ fontSize: '0.75rem', p: 1 }}>
+                          {editingEntity === entity.ID ? (
+                            <TextField 
+                              size="small" 
+                              value={editEntityData.SalExpCode || ''}
+                              onChange={(e) => handleEntityEditFieldChange('SalExpCode', e.target.value)}
+                              sx={{ '& .MuiInputBase-input': { fontSize: '0.75rem' } }}
+                            />
+                          ) : (
+                            <Typography sx={{ fontSize: '0.75rem' }}>
+                              {entity.SalExpCode || ''}
+                            </Typography>
+                          )}
+                        </TableCell>
+                        <TableCell sx={{ fontSize: '0.75rem', p: 1 }}>
+                          {editingEntity === entity.ID ? (
                             <Box sx={{ display: 'flex', gap: 0.5 }}>
                               <IconButton 
                                 size="small" 
@@ -958,7 +1055,7 @@ function EntitiesManager() {
                                 onClick={handleEntityEditSave}
                                 sx={{ p: 0.5 }}
                               >
-                                <DeleteIcon fontSize="small" />
+                                <SaveIcon fontSize="small" />
                               </IconButton>
                               <IconButton 
                                 size="small" 

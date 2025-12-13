@@ -101,6 +101,7 @@ export interface PayrollAllocation {
   DisposalAllocation: number;
   Numeric: number;
   FixedAt: Date;
+  Locked: boolean;
 }
 
 export interface AllocationWithDetails extends Allocation {

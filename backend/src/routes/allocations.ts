@@ -108,29 +108,43 @@ router.post('/', async (req, res) => {
       .input('ProjectName', ProjectName)
       .query('SELECT ID FROM dbo.Projects WHERE Name = @ProjectName');
 
+    if (projectResult.recordset.length === 0) {
+      return res.status(400).json({ 
+        error: 'Invalid reference data',
+        details: {
+          projectFound: false,
+          resourceFound: false,
+          positionFound: false
+        }
+      });
+    }
+
+    const projectId = projectResult.recordset[0].ID;
+
     const resourceResult = await pool
       .request()
       .input('ResourceName', ResourceName)
       .query('SELECT ID FROM dbo.Resources WHERE Name = @ResourceName');
 
+    // Query position by PositionName, MonthYear AND Project to ensure we get the correct one
     const positionResult = await pool
       .request()
       .input('PositionName', PositionName)
       .input('MonthYear', MonthYear)
-      .query('SELECT ID FROM dbo.Positions WHERE PositionName = @PositionName AND MonthYear = @MonthYear');
+      .input('ProjectID', projectId)
+      .query('SELECT ID FROM dbo.Positions WHERE PositionName = @PositionName AND MonthYear = @MonthYear AND Project = @ProjectID AND Allocated = \'No\'');
 
-    if (projectResult.recordset.length === 0 || resourceResult.recordset.length === 0 || positionResult.recordset.length === 0) {
+    if (resourceResult.recordset.length === 0 || positionResult.recordset.length === 0) {
       return res.status(400).json({ 
         error: 'Invalid reference data',
         details: {
-          projectFound: projectResult.recordset.length > 0,
+          projectFound: true,
           resourceFound: resourceResult.recordset.length > 0,
           positionFound: positionResult.recordset.length > 0
         }
       });
     }
 
-    const projectId = projectResult.recordset[0].ID;
     const resourceId = resourceResult.recordset[0].ID;
     const positionId = positionResult.recordset[0].ID;
 
@@ -206,6 +220,7 @@ router.put('/:id', async (req, res) => {
 
 // Validate and fix position allocations for given months
 // This ensures all positions for displayed months appear exactly once
+// Optimized with batch updates for better performance
 router.post('/validate-positions', async (req, res) => {
   try {
     const { monthYears } = req.body; // Array of MonthYear values from the frontend
@@ -235,8 +250,11 @@ router.post('/validate-positions', async (req, res) => {
     const positions = positionsResult.recordset;
     const allocations = allocationsResult.recordset;
     
-    // Track changes made
+    // Track changes made and collect IDs for batch operations
     const changes: { action: string; positionId: string; positionName: string; details: string }[] = [];
+    const allocationsToDelete: string[] = [];
+    const positionsToSetYes: string[] = [];
+    const positionsToSetNo: string[] = [];
     
     // Build a map of positionId -> position for quick lookup
     const positionMap = new Map<string, any>();
@@ -260,12 +278,7 @@ router.post('/validate-positions', async (req, res) => {
       const position = positionMap.get(allocation.PositionID);
       
       if (position && position.Project !== allocation.ProjectID) {
-        // Mismatch! This allocation points to a position from a different project
-        // Delete the allocation
-        await pool
-          .request()
-          .input('id', allocation.ID)
-          .query('DELETE FROM dbo.Allocation WHERE ID = @id');
+        allocationsToDelete.push(allocation.ID);
         
         changes.push({
           action: 'deleted_mismatched',
@@ -290,12 +303,7 @@ router.post('/validate-positions', async (req, res) => {
         const [keepAllocation, ...duplicateAllocations] = positionAllocs;
         
         for (const dupAlloc of duplicateAllocations) {
-          // Delete duplicate allocation
-          await pool
-            .request()
-            .input('id', dupAlloc.ID)
-            .query('DELETE FROM dbo.Allocation WHERE ID = @id');
-          
+          allocationsToDelete.push(dupAlloc.ID);
           changes.push({
             action: 'deleted_duplicate',
             positionId: position.ID,
@@ -304,16 +312,9 @@ router.post('/validate-positions', async (req, res) => {
           });
         }
         
-        // Mark position as unallocated and delete the kept allocation too
-        await pool
-          .request()
-          .input('id', keepAllocation.ID)
-          .query('DELETE FROM dbo.Allocation WHERE ID = @id');
-        
-        await pool
-          .request()
-          .input('positionId', position.ID)
-          .query("UPDATE dbo.Positions SET Allocated = 'No' WHERE ID = @positionId");
+        // Also delete the kept allocation and mark position as unallocated
+        allocationsToDelete.push(keepAllocation.ID);
+        positionsToSetNo.push(position.ID);
         
         changes.push({
           action: 'moved_to_unallocated',
@@ -325,11 +326,7 @@ router.post('/validate-positions', async (req, res) => {
       } else if (positionAllocs.length === 1) {
         // Position is allocated exactly once - ensure Allocated = 'Yes'
         if (position.Allocated !== 'Yes') {
-          await pool
-            .request()
-            .input('positionId', position.ID)
-            .query("UPDATE dbo.Positions SET Allocated = 'Yes' WHERE ID = @positionId");
-          
+          positionsToSetYes.push(position.ID);
           changes.push({
             action: 'fixed_allocated_status',
             positionId: position.ID,
@@ -341,11 +338,7 @@ router.post('/validate-positions', async (req, res) => {
       } else {
         // Position has no allocation - ensure it's marked as unallocated
         if (position.Allocated !== 'No') {
-          await pool
-            .request()
-            .input('positionId', position.ID)
-            .query("UPDATE dbo.Positions SET Allocated = 'No' WHERE ID = @positionId");
-          
+          positionsToSetNo.push(position.ID);
           changes.push({
             action: 'fixed_unallocated_status',
             positionId: position.ID,
@@ -359,7 +352,7 @@ router.post('/validate-positions', async (req, res) => {
     // Also check for orphaned allocations (allocations pointing to non-existent positions)
     const positionIds = new Set(positions.map(p => p.ID));
     for (const allocation of allocations) {
-      if (!positionIds.has(allocation.PositionID)) {
+      if (!positionIds.has(allocation.PositionID) && !allocationsToDelete.includes(allocation.ID)) {
         // Check if position exists at all in the database
         const posCheck = await pool
           .request()
@@ -367,12 +360,7 @@ router.post('/validate-positions', async (req, res) => {
           .query('SELECT ID FROM dbo.Positions WHERE ID = @positionId');
         
         if (posCheck.recordset.length === 0) {
-          // Position doesn't exist at all - orphaned allocation, delete it
-          await pool
-            .request()
-            .input('id', allocation.ID)
-            .query('DELETE FROM dbo.Allocation WHERE ID = @id');
-          
+          allocationsToDelete.push(allocation.ID);
           changes.push({
             action: 'deleted_orphan',
             positionId: allocation.PositionID,
@@ -381,6 +369,33 @@ router.post('/validate-positions', async (req, res) => {
           });
         }
       }
+    }
+    
+    // Execute batch operations
+    // 1. Batch delete allocations
+    if (allocationsToDelete.length > 0) {
+      await pool.request().query(`
+        DELETE FROM dbo.Allocation 
+        WHERE ID IN ('${allocationsToDelete.join("','")}')
+      `);
+    }
+    
+    // 2. Batch update positions to 'Yes'
+    if (positionsToSetYes.length > 0) {
+      await pool.request().query(`
+        UPDATE dbo.Positions 
+        SET Allocated = 'Yes' 
+        WHERE ID IN ('${positionsToSetYes.join("','")}')
+      `);
+    }
+    
+    // 3. Batch update positions to 'No'
+    if (positionsToSetNo.length > 0) {
+      await pool.request().query(`
+        UPDATE dbo.Positions 
+        SET Allocated = 'No' 
+        WHERE ID IN ('${positionsToSetNo.join("','")}')
+      `);
     }
     
     res.json({

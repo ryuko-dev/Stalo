@@ -33,10 +33,12 @@ import {
   Search as SearchIcon,
   FilterList as FilterIcon,
   Timeline as TimelineIcon,
-  Edit as EditIcon
+  Edit as EditIcon,
+  CloudSync as CloudSyncIcon
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getProjects, createProject, updateProject, deleteProject, getSystemUsers } from '../services/staloService';
+import { useAuth } from '../contexts/AuthContext';
 import type { Project } from '../types';
 import type { SystemUser } from '../types/systemUsers';
 import GanttChart from './GanttChart';
@@ -46,6 +48,7 @@ const allocationModes = ['%', 'Days'];
 
 export default function Projects() {
   const queryClient = useQueryClient();
+  const { isAuthenticated, login, logout, userDisplayName, isLoading: authLoading } = useAuth();
   const [notification, setNotification] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
     open: false,
     message: '',
@@ -164,7 +167,28 @@ export default function Projects() {
         <Typography variant="h5" component="h1" sx={{ fontWeight: 'bold', color: '#333' }}>
           Projects
         </Typography>
-        <Box sx={{ display: 'flex', gap: 1 }}>
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          {isAuthenticated && (
+            <Chip
+              label={`Connected: ${userDisplayName}`}
+              color="success"
+              variant="filled"
+              size="small"
+              sx={{ fontWeight: 'bold' }}
+            />
+          )}
+          <Tooltip title={isAuthenticated ? 'Disconnect from Business Central' : 'Connect to Business Central'}>
+            <Button 
+              variant={isAuthenticated ? 'contained' : 'outlined'}
+              color={isAuthenticated ? 'success' : 'primary'}
+              size="small" 
+              startIcon={<CloudSyncIcon />}
+              onClick={() => isAuthenticated ? logout() : login()}
+              disabled={authLoading}
+            >
+              {authLoading ? 'Connecting...' : isAuthenticated ? 'Disconnect' : 'Connect to BC'}
+            </Button>
+          </Tooltip>
           <Tooltip title="View Gantt Chart">
             <Button 
               variant="outlined" 
@@ -636,7 +660,7 @@ export default function Projects() {
           Project Gantt Chart
         </DialogTitle>
         <DialogContent sx={{ p: 0, height: 'calc(90vh - 120px)', overflow: 'hidden' }}>
-          <GanttChart />
+          <GanttChart selectedDate={new Date()} />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setGanttDialogOpen(false)}>Close</Button>

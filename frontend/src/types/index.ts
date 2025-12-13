@@ -59,18 +59,9 @@ export interface MonthlyAllocationSummary {
 }
 
 export interface AllocationFormData {
-  PositionID?: string;
   ProjectName: string;
   ResourceName: string;
   PositionName: string;
-  MonthYear: string;
-  AllocationMode: string;
-  LoE: number;
-}
-
-export interface DragAllocationData {
-  PositionID: string;
-  ResourceName: string;
   MonthYear: string;
   AllocationMode: string;
   LoE: number;

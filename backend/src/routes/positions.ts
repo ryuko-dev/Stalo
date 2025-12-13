@@ -3,7 +3,58 @@ import { getConnection, sql } from '../config/database';
 
 const router = Router();
 
+// Combined endpoint - returns all data needed for Positions page in single request
+// Supports optional date filtering via query params: startMonth, endMonth (format: YYYY-MM)
+router.get('/combined', async (req, res) => {
+  try {
+    const pool = await getConnection();
+    const { startMonth, endMonth } = req.query;
+    
+    // Build positions query with optional date filter
+    let positionsQuery = `
+      SELECT p.*, pr.Name as ProjectName 
+      FROM dbo.Positions p
+      LEFT JOIN dbo.Projects pr ON p.Project = pr.ID
+    `;
+    
+    // Build allocations query with optional date filter  
+    let allocationsQuery = 'SELECT * FROM dbo.Allocation';
+    
+    // If date range is provided, filter positions and allocations by MonthYear
+    // MonthYear is stored as datetime, so we compare year/month parts
+    if (startMonth && endMonth) {
+      const [startYear, startMon] = (startMonth as string).split('-');
+      const [endYear, endMon] = (endMonth as string).split('-');
+      
+      positionsQuery += ` WHERE (YEAR(p.MonthYear) > ${startYear} OR (YEAR(p.MonthYear) = ${startYear} AND MONTH(p.MonthYear) >= ${startMon}))
+        AND (YEAR(p.MonthYear) < ${endYear} OR (YEAR(p.MonthYear) = ${endYear} AND MONTH(p.MonthYear) <= ${endMon}))`;
+      
+      allocationsQuery += ` WHERE (YEAR(MonthYear) > ${startYear} OR (YEAR(MonthYear) = ${startYear} AND MONTH(MonthYear) >= ${startMon}))
+        AND (YEAR(MonthYear) < ${endYear} OR (YEAR(MonthYear) = ${endYear} AND MONTH(MonthYear) <= ${endMon}))`;
+    }
+    
+    // Execute all queries in parallel for maximum performance
+    const [positionsResult, projectsResult, resourcesResult, allocationsResult] = await Promise.all([
+      pool.request().query(positionsQuery),
+      pool.request().query('SELECT * FROM dbo.Projects ORDER BY Name'),
+      pool.request().query('SELECT * FROM dbo.Resources'),
+      pool.request().query(allocationsQuery)
+    ]);
+    
+    res.json({
+      positions: positionsResult.recordset,
+      projects: projectsResult.recordset,
+      resources: resourcesResult.recordset,
+      allocations: allocationsResult.recordset
+    });
+  } catch (error: any) {
+    console.error('Error fetching combined positions data:', error);
+    res.status(500).json({ error: 'Failed to fetch positions data', details: error.message });
+  }
+});
+
 // Validate position allocations - ensure positions with Allocated='Yes' have matching allocation entries
+// Optimized with batch updates for better performance
 router.post('/validate-allocations', async (req, res) => {
   try {
     const pool = await getConnection();
@@ -27,19 +78,16 @@ router.post('/validate-allocations', async (req, res) => {
     // Build a set of position IDs that have allocations
     const allocatedPositionIds = new Set(allocations.map(a => a.PositionID));
     
-    // Track changes
+    // Track changes and collect IDs for batch updates
     const changes: { action: string; positionId: string; positionName: string; details: string }[] = [];
+    const positionsToSetNo: string[] = [];
+    const positionsToSetYes: string[] = [];
     
     for (const position of positions) {
       const hasAllocation = allocatedPositionIds.has(position.ID);
       
       if (position.Allocated === 'Yes' && !hasAllocation) {
-        // Position marked as allocated but no allocation exists - fix it
-        await pool
-          .request()
-          .input('positionId', position.ID)
-          .query("UPDATE dbo.Positions SET Allocated = 'No' WHERE ID = @positionId");
-        
+        positionsToSetNo.push(position.ID);
         changes.push({
           action: 'fixed_false_allocation',
           positionId: position.ID,
@@ -47,12 +95,7 @@ router.post('/validate-allocations', async (req, res) => {
           details: `Position was marked as allocated but no allocation entry exists in dbo.Allocation - set to unallocated`
         });
       } else if (position.Allocated === 'No' && hasAllocation) {
-        // Position marked as unallocated but allocation exists - fix it
-        await pool
-          .request()
-          .input('positionId', position.ID)
-          .query("UPDATE dbo.Positions SET Allocated = 'Yes' WHERE ID = @positionId");
-        
+        positionsToSetYes.push(position.ID);
         changes.push({
           action: 'fixed_missing_allocation_flag',
           positionId: position.ID,
@@ -60,6 +103,24 @@ router.post('/validate-allocations', async (req, res) => {
           details: `Position was marked as unallocated but allocation entry exists in dbo.Allocation - set to allocated`
         });
       }
+    }
+    
+    // Batch update positions that need to be set to 'No'
+    if (positionsToSetNo.length > 0) {
+      await pool.request().query(`
+        UPDATE dbo.Positions 
+        SET Allocated = 'No' 
+        WHERE ID IN ('${positionsToSetNo.join("','")}')
+      `);
+    }
+    
+    // Batch update positions that need to be set to 'Yes'
+    if (positionsToSetYes.length > 0) {
+      await pool.request().query(`
+        UPDATE dbo.Positions 
+        SET Allocated = 'Yes' 
+        WHERE ID IN ('${positionsToSetYes.join("','")}')
+      `);
     }
     
     res.json({
@@ -198,6 +259,23 @@ router.put('/:id', async (req, res) => {
             Allocated = COALESCE(@Allocated, Allocated)
         WHERE ID = @id
       `);
+
+    // Also update the allocation record if LoE, AllocationMode, or PositionName changed
+    if (LoE !== undefined || allocationMode !== undefined || PositionName !== undefined) {
+      await pool
+        .request()
+        .input('positionId', req.params.id)
+        .input('LoE', sql.Decimal(10, 2), LoE)
+        .input('AllocationMode', sql.NVarChar(100), allocationMode)
+        .input('PositionName', sql.NVarChar(255), PositionName)
+        .query(`
+          UPDATE dbo.Allocation
+          SET LoE = COALESCE(@LoE, LoE),
+              AllocationMode = COALESCE(@AllocationMode, AllocationMode),
+              PositionName = COALESCE(@PositionName, PositionName)
+          WHERE PositionID = @positionId
+        `);
+    }
 
     const updated = await pool
       .request()

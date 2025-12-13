@@ -1,7 +1,32 @@
 import api from './api';
-import type { Project, Position, Resource, Allocation, MonthlyAllocationSummary, AllocationFormData, DragAllocationData } from '../types';
+import type { Project, Position, Resource, Allocation, MonthlyAllocationSummary, AllocationFormData, DragAllocationData, PayrollResource, PayrollRecord } from '../types';
 import type { SystemUser, SystemUserUpdate, SystemUserCreate } from '../types/systemUsers';
 import type { Entity, EntityCreate, EntityUpdate } from '../types/entities';
+
+// Combined endpoint for Positions page - single API call for all data
+// Supports optional date filtering for better performance
+export interface PositionsCombinedData {
+  positions: Position[];
+  projects: Project[];
+  resources: Resource[];
+  allocations: Allocation[];
+}
+
+export interface PositionsCombinedParams {
+  startMonth?: string; // Format: YYYY-MM
+  endMonth?: string;   // Format: YYYY-MM
+}
+
+export const getPositionsCombinedData = async (params?: PositionsCombinedParams): Promise<PositionsCombinedData> => {
+  const queryParams = new URLSearchParams();
+  if (params?.startMonth) queryParams.append('startMonth', params.startMonth);
+  if (params?.endMonth) queryParams.append('endMonth', params.endMonth);
+  
+  const queryString = queryParams.toString();
+  const url = queryString ? `/positions/combined?${queryString}` : '/positions/combined';
+  const response = await api.get(url);
+  return response.data;
+};
 
 // Projects
 export const getProjects = async (): Promise<Project[]> => {
@@ -195,4 +220,46 @@ export const updateResource = async (id: string, data: Partial<Resource>): Promi
 
 export const deleteResource = async (id: string): Promise<void> => {
   await api.delete(`/resources/${id}`);
+};
+
+// Payroll Allocation
+export const getPayrollProjects = async (month: string): Promise<any[]> => {
+  const response = await api.get('/payroll/projects', { params: { month } });
+  return response.data;
+};
+
+export const getPayrollResources = async (month: string): Promise<PayrollResource[]> => {
+  const response = await api.get('/payroll', { params: { month } });
+  return response.data;
+};
+
+export const getPayrollRecords = async (month: string): Promise<PayrollRecord[]> => {
+  const response = await api.get('/payroll/all', { params: { month } });
+  return response.data;
+};
+
+export const createOrUpdatePayrollRecord = async (data: Partial<PayrollRecord>): Promise<PayrollRecord> => {
+  const response = await api.post('/payroll', data);
+  return response.data;
+};
+
+// Lock/unlock payroll records
+export const lockPayrollRecords = async (recordIds: string[], locked: boolean): Promise<{
+  success: boolean;
+  updatedCount: number;
+  locked: boolean;
+}> => {
+  const response = await api.patch('/payroll/lock', { recordIds, locked });
+  return response.data;
+};
+
+// Lock/unlock all payroll records for a month
+export const lockPayrollMonth = async (month: string, locked: boolean): Promise<{
+  success: boolean;
+  updatedCount: number;
+  month: string;
+  locked: boolean;
+}> => {
+  const response = await api.patch('/payroll/lock-month', { month, locked });
+  return response.data;
 };

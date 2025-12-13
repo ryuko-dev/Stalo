@@ -4,9 +4,16 @@ import {
   Typography, 
   Card, 
   CardContent, 
-  Button, 
-  Tooltip,
-  Chip
+  Button,
+  Chip,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  Tooltip
 } from '@mui/material';
 import { 
   ArrowBack as ArrowBackIcon,
@@ -16,19 +23,21 @@ import { useQuery } from '@tanstack/react-query';
 import { getProjects } from '../services/staloService';
 import type { Project } from '../types';
 import { 
-  format, 
-  eachMonthOfInterval, 
-  startOfMonth, 
-  endOfMonth, 
-  differenceInMonths,
+  parse,
+  format,
   addMonths,
-  min,
-  max,
-  isSameMonth
+  startOfMonth,
+  endOfMonth,
+  isBefore,
+  isAfter
 } from 'date-fns';
 
-export default function GanttChart() {
-  const { data: projectsData, isLoading } = useQuery<Project[], Error>({ 
+interface GanttChartProps {
+  selectedDate: Date;
+}
+
+export default function GanttChart({ selectedDate }: GanttChartProps) {
+  const { data: projectsData, isLoading, error } = useQuery<Project[], Error>({ 
     queryKey: ['projects'], 
     queryFn: getProjects, 
     staleTime: 1000 * 60 * 5 
@@ -36,84 +45,118 @@ export default function GanttChart() {
 
   const projects = projectsData ?? [];
 
-  // Calculate date range for all projects
-  const dateRange = useMemo(() => {
-    if (projects.length === 0) return null;
+  // Generate 18 months starting from selectedDate
+  const months = useMemo(() => {
+    return Array.from({ length: 18 }, (_, i) => addMonths(startOfMonth(selectedDate), i));
+  }, [selectedDate]);
+
+  // Parse date helper
+  const parseProjectDate = (d?: string | null): Date | null => {
+    if (!d) return null;
+    if (d.includes('T') || d.includes('Z') || d.match(/\+\d{2}:?\d{2}/)) {
+      return new Date(d);
+    }
+    try {
+      return parse(d, 'yyyy-MM-dd', new Date());
+    } catch {
+      return new Date(d);
+    }
+  };
+
+  // Get project status based on today's date
+  const getProjectStatus = (start: Date | null, end: Date | null): 'active' | 'upcoming' | 'completed' | 'unknown' => {
+    if (!start || !end) return 'unknown';
     
-    const allDates = projects.flatMap(p => {
-      const dates = [];
-      if (p.StartDate) dates.push(new Date(p.StartDate));
-      if (p.EndDate) dates.push(new Date(p.EndDate));
-      return dates;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const startNorm = new Date(start);
+    startNorm.setHours(0, 0, 0, 0);
+    const endNorm = new Date(end);
+    endNorm.setHours(0, 0, 0, 0);
+    
+    if (endNorm < today) {
+      return 'completed';
+    } else if (startNorm > today) {
+      return 'upcoming';
+    } else {
+      return 'active';
+    }
+  };
+
+  // Get project status color based on today's date
+  const getProjectColor = (start: Date | null, end: Date | null) => {
+    const status = getProjectStatus(start, end);
+    switch (status) {
+      case 'completed': return '#616161'; // dark grey
+      case 'upcoming': return '#2196f3'; // blue
+      case 'active': return '#4caf50'; // green
+      default: return '#9e9e9e';
+    }
+  };
+
+  // Group projects by status
+  const groupedProjects = useMemo(() => {
+    const active: Project[] = [];
+    const upcoming: Project[] = [];
+    const completed: Project[] = [];
+    
+    projects.forEach(project => {
+      const start = parseProjectDate(project.StartDate);
+      const end = parseProjectDate(project.EndDate);
+      const status = getProjectStatus(start, end);
+      
+      switch (status) {
+        case 'active': active.push(project); break;
+        case 'upcoming': upcoming.push(project); break;
+        case 'completed': completed.push(project); break;
+        default: completed.push(project); // Put unknown in completed
+      }
     });
-
-    if (allDates.length === 0) return null;
-
-    const minDate = min(allDates);
-    const maxDate = max(allDates);
     
-    // Start exactly 2 months before current date
-    const twoMonthsAgo = addMonths(new Date(), -2);
-    const effectiveStart = minDate < twoMonthsAgo ? twoMonthsAgo : minDate;
-    
-    // Add 2 months padding on the end only
-    return {
-      start: startOfMonth(effectiveStart),
-      end: endOfMonth(addMonths(maxDate, 2))
-    };
+    return { active, upcoming, completed };
   }, [projects]);
 
-  // Generate months for the timeline
-  const timelineMonths = useMemo(() => {
-    if (!dateRange) return [];
-    return eachMonthOfInterval({ start: dateRange.start, end: dateRange.end });
-  }, [dateRange]);
-
-  // Calculate project position and width
-  const getProjectBarStyle = (project: Project) => {
-    if (!dateRange || !project.StartDate || !project.EndDate) {
-      return { display: 'none' };
-    }
-
-    const projectStart = new Date(project.StartDate);
-    const projectEnd = new Date(project.EndDate);
-    const totalMonths = differenceInMonths(dateRange.end, dateRange.start) + 1;
+  // Check if project spans a specific month
+  const isProjectInMonth = (project: Project, month: Date): boolean => {
+    const start = parseProjectDate(project.StartDate);
+    const end = parseProjectDate(project.EndDate);
     
-    const startOffset = Math.max(0, differenceInMonths(projectStart, dateRange.start));
-    const duration = Math.min(
-      differenceInMonths(projectEnd, projectStart) + 1,
-      totalMonths - startOffset
-    );
+    if (!start || !end) return false;
+    
+    const monthStart = startOfMonth(month);
+    const monthEnd = endOfMonth(month);
+    
+    // Project is in this month if it overlaps with the month range
+    return !(isAfter(start, monthEnd) || isBefore(end, monthStart));
+  };
 
+  // Get bar style for a project in a month - fills entire cell for connected look
+  const getBarStyle = (project: Project, month: Date): React.CSSProperties | null => {
+    const start = parseProjectDate(project.StartDate);
+    const end = parseProjectDate(project.EndDate);
+    
+    if (!start || !end) return null;
+    if (!isProjectInMonth(project, month)) return null;
+    
+    const color = getProjectColor(start, end);
+    
     return {
-      left: `${(startOffset / totalMonths) * 100}%`,
-      width: `${(duration / totalMonths) * 100}%`,
-      minWidth: '20px'
+      backgroundColor: color,
+      height: '100%',
+      minHeight: '20px',
+      borderRadius: '0',
+      width: '100%'
     };
   };
 
-  const getProjectColor = (project: Project) => {
-    const now = new Date();
-    const projectStart = project.StartDate ? new Date(project.StartDate) : null;
-    const projectEnd = project.EndDate ? new Date(project.EndDate) : null;
-    
-    if (!projectStart || !projectEnd) return '#9e9e9e';
-    
-    if (projectStart > now) return '#2196f3'; // Future - Blue
-    if (projectEnd < now) return '#4caf50'; // Completed - Green
-    return '#ff9800'; // Active - Orange
-  };
-
-  const getProjectStatus = (project: Project) => {
-    const now = new Date();
-    const projectStart = project.StartDate ? new Date(project.StartDate) : null;
-    const projectEnd = project.EndDate ? new Date(project.EndDate) : null;
-    
-    if (!projectStart || !projectEnd) return 'No Dates';
-    if (projectStart > now) return 'Upcoming';
-    if (projectEnd < now) return 'Completed';
-    return 'Active';
-  };
+  if (error) {
+    return (
+      <Box sx={{ p: 3, display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
+        <Typography color="error">Error loading projects: {error.message}</Typography>
+      </Box>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -132,7 +175,7 @@ export default function GanttChart() {
             startIcon={<ArrowBackIcon />}
             onClick={() => window.history.back()}
           >
-            Back to Projects
+            Back
           </Button>
           <Typography variant="h4" sx={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1 }}>
             <TimelineIcon />
@@ -151,190 +194,296 @@ export default function GanttChart() {
   }
 
   return (
-    <Box sx={{ p: 3, backgroundColor: '#f8f9fa', minHeight: '100vh' }}>
+    <Box sx={{ p: 2, backgroundColor: '#f8f9fa', minHeight: '100vh' }}>
       {/* Header */}
-      <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Button 
             variant="outlined" 
+            size="small"
             startIcon={<ArrowBackIcon />}
             onClick={() => window.history.back()}
           >
             Back
           </Button>
-          <Typography variant="h4" sx={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="h5" sx={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1 }}>
             <TimelineIcon />
             Project Gantt Chart
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1 }}>
-          <Chip label="Active" sx={{ backgroundColor: '#ff9800', color: 'white' }} size="small" />
+          <Chip label="Active" sx={{ backgroundColor: '#4caf50', color: 'white' }} size="small" />
           <Chip label="Upcoming" sx={{ backgroundColor: '#2196f3', color: 'white' }} size="small" />
-          <Chip label="Completed" sx={{ backgroundColor: '#4caf50', color: 'white' }} size="small" />
+          <Chip label="Completed" sx={{ backgroundColor: '#616161', color: 'white' }} size="small" />
         </Box>
       </Box>
 
-      {/* Gantt Chart */}
-      <Card sx={{ boxShadow: 2 }}>
-        <CardContent sx={{ p: 0 }}>
-          {/* Timeline Header */}
-          <Box sx={{ 
-            display: 'flex', 
-            backgroundColor: '#f5f5f5', 
-            borderBottom: '2px solid #e0e0e0',
-            position: 'sticky',
-            top: 0,
-            zIndex: 10
-          }}>
-            <Box sx={{ 
-              width: '250px', 
-              p: 2, 
-              borderRight: '2px solid #e0e0e0',
-              backgroundColor: '#fafafa'
-            }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>Project</Typography>
-            </Box>
-            <Box sx={{ flex: 1, display: 'flex', minWidth: 0 }}>
-              {timelineMonths.map((month, index) => (
-                <Box 
-                  key={index} 
-                  sx={{ 
-                    flex: 1, 
-                    minWidth: '80px', 
-                    p: 1, 
-                    borderRight: '1px solid #e0e0e0',
-                    textAlign: 'center',
-                    backgroundColor: isSameMonth(month, new Date()) ? '#fff3e0' : (index % 2 === 0 ? '#f9f9f9' : '#ffffff'),
-                    border: isSameMonth(month, new Date()) ? '2px solid #ff9800' : 'none',
-                    borderTop: isSameMonth(month, new Date()) ? '2px solid #ff9800' : 'none'
-                  }}
-                >
-                  <Typography variant="caption" sx={{ fontWeight: 'bold', display: 'block', color: isSameMonth(month, new Date()) ? '#e65100' : 'inherit' }}>
-                    {format(month, 'MMM')}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {format(month, 'yyyy')}
-                  </Typography>
-                </Box>
-              ))}
-            </Box>
-          </Box>
-
-          {/* Project Rows */}
-          <Box sx={{ maxHeight: '70vh', overflowY: 'auto' }}>
-            {projects.map((project, index) => (
-              <Box 
-                key={project.ID} 
+      {/* Gantt Chart Table */}
+      <TableContainer component={Paper} sx={{ boxShadow: 2 }}>
+        <Table size="small" sx={{ tableLayout: 'fixed' }}>
+          <TableHead>
+            <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+              <TableCell 
                 sx={{ 
-                  display: 'flex', 
-                  borderBottom: '1px solid #e0e0e0',
-                  '&:hover': { backgroundColor: '#f8f9fa' }
+                  width: '280px', 
+                  fontWeight: 'bold', 
+                  borderRight: '2px solid #e0e0e0',
+                  py: 0.75,
+                  fontSize: '0.8rem'
                 }}
               >
-                {/* Project Info */}
-                <Box sx={{ 
-                  width: '250px', 
-                  p: 1, 
-                  borderRight: '2px solid #e0e0e0',
-                  backgroundColor: index % 2 === 0 ? '#fafafa' : '#ffffff'
-                }}>
-                  <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-                    {project.Name}
-                  </Typography>
-                </Box>
-
-                {/* Timeline */}
-                <Box sx={{ 
-                  flex: 1, 
-                  position: 'relative', 
-                  minHeight: '40px',
-                  backgroundColor: index % 2 === 0 ? '#ffffff' : '#fafafa',
-                  display: 'flex',
-                  alignItems: 'center'
-                }}>
-                  {/* Month grid lines */}
-                  {timelineMonths.map((month, monthIndex) => (
-                    <Box 
-                      key={monthIndex} 
-                      sx={{ 
-                        flex: 1, 
-                        borderRight: '1px solid #f0f0f0',
-                        minHeight: '100%',
-                        backgroundColor: isSameMonth(month, new Date()) ? 'rgba(255, 152, 0, 0.05)' : 'transparent'
-                      }} 
-                    />
-                  ))}
-                  
-                  {/* Project Bar */}
-                  <Tooltip 
-                    title={
-                      <Box>
-                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-                          {project.Name}
-                        </Typography>
-                        <Typography variant="caption">
-                          {project.StartDate && `Start: ${format(new Date(project.StartDate), 'MMM dd, yyyy')}`}
-                        </Typography>
-                        <br />
-                        <Typography variant="caption">
-                          {project.EndDate && `End: ${format(new Date(project.EndDate), 'MMM dd, yyyy')}`}
-                        </Typography>
-                        <br />
-                        <Typography variant="caption">
-                          Status: {getProjectStatus(project)}
-                        </Typography>
-                        {project.ProjectBudget && (
-                          <>
-                            <br />
-                            <Typography variant="caption">
-                              Budget: {project.ProjectCurrency || 'USD'} {project.ProjectBudget.toLocaleString()}
-                            </Typography>
-                          </>
-                        )}
-                      </Box>
-                    }
+                Project Name
+              </TableCell>
+              {months.map((month, index) => (
+                <TableCell 
+                  key={index} 
+                  align="center" 
+                  sx={{ 
+                    fontWeight: 'bold',
+                    borderRight: '1px solid #e0e0e0',
+                    py: 0.5,
+                    px: 0.5,
+                    fontSize: '0.7rem',
+                    minWidth: '55px'
+                  }}
+                >
+                  <Box>{format(month, 'MMM')}</Box>
+                  <Box sx={{ fontSize: '0.6rem', color: 'text.secondary' }}>{format(month, 'yyyy')}</Box>
+                </TableCell>
+              ))}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {/* Active Projects */}
+            {groupedProjects.active.length > 0 && (
+              <>
+                <TableRow>
+                  <TableCell 
+                    colSpan={months.length + 1} 
+                    sx={{ 
+                      backgroundColor: '#e8f5e9', 
+                      fontWeight: 'bold', 
+                      fontSize: '0.8rem',
+                      py: 0.5,
+                      color: '#2e7d32'
+                    }}
                   >
-                    <Box
-                      sx={{
-                        position: 'absolute',
-                        height: '20px',
-                        borderRadius: '10px',
-                        backgroundColor: getProjectColor(project),
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s ease',
-                        '&:hover': {
-                          transform: 'scaleY(1.2)',
-                          boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
-                        },
-                        ...getProjectBarStyle(project)
+                    Active ({groupedProjects.active.length})
+                  </TableCell>
+                </TableRow>
+                {groupedProjects.active.map((project) => {
+                  const start = parseProjectDate(project.StartDate);
+                  const end = parseProjectDate(project.EndDate);
+                  
+                  return (
+                    <TableRow 
+                      key={project.ID}
+                      sx={{ 
+                        '&:hover': { backgroundColor: '#f8f9fa' },
+                        '& td': { py: 0.25 }
                       }}
                     >
-                      <Typography 
-                        variant="caption" 
+                      <TableCell 
                         sx={{ 
-                          color: 'white', 
-                          fontSize: '0.6rem', 
-                          fontWeight: 'bold',
-                          px: 0.5,
-                          textOverflow: 'ellipsis',
+                          borderRight: '2px solid #e0e0e0',
                           overflow: 'hidden',
+                          textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap',
-                          maxWidth: '100%'
+                          py: 0.5
                         }}
                       >
-                        {project.Name}
-                      </Typography>
-                    </Box>
-                  </Tooltip>
-                </Box>
-              </Box>
-            ))}
-          </Box>
-        </CardContent>
-      </Card>
+                        <Tooltip title={`${project.Name} (${start ? format(start, 'MMM dd, yyyy') : 'N/A'} - ${end ? format(end, 'MMM dd, yyyy') : 'N/A'})`}>
+                          <Box>
+                            <Typography component="span" sx={{ fontSize: '0.75rem', fontWeight: 500 }}>
+                              {project.Name}
+                            </Typography>
+                            <Typography component="span" sx={{ fontSize: '0.65rem', fontStyle: 'italic', color: 'text.secondary', ml: 0.5 }}>
+                              ({start ? format(start, 'MMM yy') : '?'} - {end ? format(end, 'MMM yy') : '?'})
+                            </Typography>
+                          </Box>
+                        </Tooltip>
+                      </TableCell>
+                      {months.map((month, index) => {
+                        const barStyle = getBarStyle(project, month);
+                        
+                        return (
+                          <TableCell 
+                            key={index} 
+                            align="center"
+                            sx={{ 
+                              borderRight: '1px solid #e0e0e0',
+                              p: 0,
+                              height: '24px'
+                            }}
+                          >
+                            {barStyle && (
+                              <Tooltip title={`${project.Name}: ${start ? format(start, 'MMM dd, yyyy') : 'N/A'} - ${end ? format(end, 'MMM dd, yyyy') : 'N/A'}`}>
+                                <Box sx={barStyle} />
+                              </Tooltip>
+                            )}
+                          </TableCell>
+                        );
+                      })}
+                    </TableRow>
+                  );
+                })}
+              </>
+            )}
+
+            {/* Upcoming Projects */}
+            {groupedProjects.upcoming.length > 0 && (
+              <>
+                <TableRow>
+                  <TableCell 
+                    colSpan={months.length + 1} 
+                    sx={{ 
+                      backgroundColor: '#e3f2fd', 
+                      fontWeight: 'bold', 
+                      fontSize: '0.8rem',
+                      py: 0.5,
+                      color: '#1565c0'
+                    }}
+                  >
+                    Upcoming ({groupedProjects.upcoming.length})
+                  </TableCell>
+                </TableRow>
+                {groupedProjects.upcoming.map((project) => {
+                  const start = parseProjectDate(project.StartDate);
+                  const end = parseProjectDate(project.EndDate);
+                  
+                  return (
+                    <TableRow 
+                      key={project.ID}
+                      sx={{ 
+                        '&:hover': { backgroundColor: '#f8f9fa' },
+                        '& td': { py: 0.25 }
+                      }}
+                    >
+                      <TableCell 
+                        sx={{ 
+                          borderRight: '2px solid #e0e0e0',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          py: 0.5
+                        }}
+                      >
+                        <Tooltip title={`${project.Name} (${start ? format(start, 'MMM dd, yyyy') : 'N/A'} - ${end ? format(end, 'MMM dd, yyyy') : 'N/A'})`}>
+                          <Box>
+                            <Typography component="span" sx={{ fontSize: '0.75rem', fontWeight: 500 }}>
+                              {project.Name}
+                            </Typography>
+                            <Typography component="span" sx={{ fontSize: '0.65rem', fontStyle: 'italic', color: 'text.secondary', ml: 0.5 }}>
+                              ({start ? format(start, 'MMM yy') : '?'} - {end ? format(end, 'MMM yy') : '?'})
+                            </Typography>
+                          </Box>
+                        </Tooltip>
+                      </TableCell>
+                      {months.map((month, index) => {
+                        const barStyle = getBarStyle(project, month);
+                        
+                        return (
+                          <TableCell 
+                            key={index} 
+                            align="center"
+                            sx={{ 
+                              borderRight: '1px solid #e0e0e0',
+                              p: 0,
+                              height: '24px'
+                            }}
+                          >
+                            {barStyle && (
+                              <Tooltip title={`${project.Name}: ${start ? format(start, 'MMM dd, yyyy') : 'N/A'} - ${end ? format(end, 'MMM dd, yyyy') : 'N/A'}`}>
+                                <Box sx={barStyle} />
+                              </Tooltip>
+                            )}
+                          </TableCell>
+                        );
+                      })}
+                    </TableRow>
+                  );
+                })}
+              </>
+            )}
+
+            {/* Completed Projects */}
+            {groupedProjects.completed.length > 0 && (
+              <>
+                <TableRow>
+                  <TableCell 
+                    colSpan={months.length + 1} 
+                    sx={{ 
+                      backgroundColor: '#f5f5f5', 
+                      fontWeight: 'bold', 
+                      fontSize: '0.8rem',
+                      py: 0.5,
+                      color: '#616161'
+                    }}
+                  >
+                    Completed ({groupedProjects.completed.length})
+                  </TableCell>
+                </TableRow>
+                {groupedProjects.completed.map((project) => {
+                  const start = parseProjectDate(project.StartDate);
+                  const end = parseProjectDate(project.EndDate);
+                  
+                  return (
+                    <TableRow 
+                      key={project.ID}
+                      sx={{ 
+                        '&:hover': { backgroundColor: '#f8f9fa' },
+                        '& td': { py: 0.25 }
+                      }}
+                    >
+                      <TableCell 
+                        sx={{ 
+                          borderRight: '2px solid #e0e0e0',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          py: 0.5
+                        }}
+                      >
+                        <Tooltip title={`${project.Name} (${start ? format(start, 'MMM dd, yyyy') : 'N/A'} - ${end ? format(end, 'MMM dd, yyyy') : 'N/A'})`}>
+                          <Box>
+                            <Typography component="span" sx={{ fontSize: '0.75rem', fontWeight: 500 }}>
+                              {project.Name}
+                            </Typography>
+                            <Typography component="span" sx={{ fontSize: '0.65rem', fontStyle: 'italic', color: 'text.secondary', ml: 0.5 }}>
+                              ({start ? format(start, 'MMM yy') : '?'} - {end ? format(end, 'MMM yy') : '?'})
+                            </Typography>
+                          </Box>
+                        </Tooltip>
+                      </TableCell>
+                      {months.map((month, index) => {
+                        const barStyle = getBarStyle(project, month);
+                        
+                        return (
+                          <TableCell 
+                            key={index} 
+                            align="center"
+                            sx={{ 
+                              borderRight: '1px solid #e0e0e0',
+                              p: 0,
+                              height: '24px'
+                            }}
+                          >
+                            {barStyle && (
+                              <Tooltip title={`${project.Name}: ${start ? format(start, 'MMM dd, yyyy') : 'N/A'} - ${end ? format(end, 'MMM dd, yyyy') : 'N/A'}`}>
+                                <Box sx={barStyle} />
+                              </Tooltip>
+                            )}
+                          </TableCell>
+                        );
+                      })}
+                    </TableRow>
+                  );
+                })}
+              </>
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
     </Box>
   );
 }

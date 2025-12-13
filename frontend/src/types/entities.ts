@@ -4,6 +4,9 @@ export interface Entity {
   CurrencyCode: string;
   SSAccCode: string;
   TaxAccCode: string;
+  SSExpCode?: string;
+  TaxExpCode?: string;
+  SalExpCode?: string;
 }
 
 export interface EntityCreate {
@@ -11,6 +14,9 @@ export interface EntityCreate {
   CurrencyCode?: string;
   SSAccCode?: string;
   TaxAccCode?: string;
+  SSExpCode?: string;
+  TaxExpCode?: string;
+  SalExpCode?: string;
 }
 
 export interface EntityUpdate {
@@ -18,4 +24,7 @@ export interface EntityUpdate {
   CurrencyCode?: string;
   SSAccCode?: string;
   TaxAccCode?: string;
+  SSExpCode?: string;
+  TaxExpCode?: string;
+  SalExpCode?: string;
 }
