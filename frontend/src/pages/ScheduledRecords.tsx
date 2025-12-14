@@ -33,8 +33,8 @@ export default function ScheduledRecords() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   
   // Filter state
-  const [selectedType, setSelectedType] = useState<string>('all');
-  const [selectedStatus, setSelectedStatus] = useState<string>('all'); // all, active, disposed
+  const [selectedType, setSelectedType] = useState<string>('Prepaid Expense');
+  const [selectedStatus, setSelectedStatus] = useState<string>('active'); // all, active, disposed
   
   // Modal states
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -125,7 +125,6 @@ export default function ScheduledRecords() {
 
   // Type filter options
   const TYPE_OPTIONS = [
-    { value: 'all', label: 'All Types' },
     { value: 'Prepaid Expense', label: 'Prepaid Expense' },
     { value: 'Prepaid Rent', label: 'Prepaid Rent' },
     { value: 'Other Insurance', label: 'Other Insurance' },
@@ -136,7 +135,7 @@ export default function ScheduledRecords() {
 
   // Filter records by type and status
   const filteredRecords = records
-    .filter(record => selectedType === 'all' || record.Type === selectedType)
+    .filter(record => record.Type === selectedType)
     .filter(record => {
       if (selectedStatus === 'all') return true;
       if (selectedStatus === 'disposed') return record.Disposed;

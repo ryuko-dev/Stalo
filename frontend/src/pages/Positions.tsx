@@ -57,20 +57,20 @@ export default function Positions() {
   const [filterProject, setFilterProject] = useState<string>('all');
   const [editingPosition, setEditingPosition] = useState<Position | null>(null);
   
-  // Single month filter - defaults to current month
+  // Date range filter - defaults to current month
   const today = new Date();
-  const [selectedMonth, setSelectedMonth] = useState<Date>(today);
+  const [startDate, setStartDate] = useState<Date>(startOfMonth(today));
+  const [endDate, setEndDate] = useState<Date>(endOfMonth(today));
 
   const showNotification = (message: string, severity: 'success' | 'error' = 'success') => {
     setNotification({ open: true, message, severity });
   };
 
   // Format dates for API query - memoized to avoid recalculation
-  // Using same month for start and end to filter to single month only
   const dateParams = useMemo(() => ({
-    startMonth: format(selectedMonth, 'yyyy-MM'),
-    endMonth: format(selectedMonth, 'yyyy-MM')
-  }), [selectedMonth]);
+    startMonth: format(startDate, 'yyyy-MM'),
+    endMonth: format(endDate, 'yyyy-MM')
+  }), [startDate, endDate]);
 
   // Single combined query for all data with server-side date filtering
   // Query key includes date params so it refetches when date range changes
@@ -287,9 +287,9 @@ export default function Positions() {
 
   // OPTIMIZATION: Pre-compute date range boundaries once
   const dateRangeBounds = useMemo(() => ({
-    start: startOfMonth(selectedMonth),
-    end: endOfMonth(selectedMonth)
-  }), [selectedMonth]);
+    start: startDate,
+    end: endDate
+  }), [startDate, endDate]);
 
   // Filter positions based on search and status - uses optimized lookups
   const filteredPositions = useMemo(() => {
@@ -740,9 +740,23 @@ export default function Positions() {
                 </Box>
                 <Box sx={{ flex: '0 1 150px', minWidth: '150px' }}>
                   <DatePicker
-                    label="Month"
-                    value={selectedMonth}
-                    onChange={(date) => date && setSelectedMonth(date)}
+                    label="From Date"
+                    value={startDate}
+                    onChange={(date) => date && setStartDate(date)}
+                    views={['year', 'month']}
+                    slotProps={{
+                      textField: {
+                        size: 'small',
+                        sx: { fontSize: '0.75rem' }
+                      }
+                    }}
+                  />
+                </Box>
+                <Box sx={{ flex: '0 1 150px', minWidth: '150px' }}>
+                  <DatePicker
+                    label="To Date"
+                    value={endDate}
+                    onChange={(date) => date && setEndDate(date)}
                     views={['year', 'month']}
                     slotProps={{
                       textField: {
