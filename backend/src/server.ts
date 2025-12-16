@@ -4,8 +4,11 @@ import compression from 'compression';
 import dotenv from 'dotenv';
 import path from 'path';
 
-// Load backend.env specifically
+// Load environment variables - try backend.env first, then .env
+// Azure App Service will use Application Settings which are already in process.env
 dotenv.config({ path: path.join(__dirname, '../backend.env') });
+dotenv.config(); // Also try .env as fallback
+
 import projectsRouter from './routes/projects';
 import resourcesRouter from './routes/resources';
 import allocationsRouter from './routes/allocations';
@@ -39,6 +42,18 @@ app.use('/api/scheduled-records', scheduledRecordsRouter);
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Environment debug endpoint (shows if DB config is set, not actual values)
+app.get('/api/env-check', (req, res) => {
+  res.json({
+    DB_SERVER: process.env.DB_SERVER ? '✓ Set' : '✗ Missing',
+    DB_DATABASE: process.env.DB_DATABASE ? '✓ Set' : '✗ Missing',
+    DB_USER: process.env.DB_USER ? '✓ Set' : '✗ Missing',
+    DB_PASSWORD: process.env.DB_PASSWORD ? '✓ Set (hidden)' : '✗ Missing',
+    PORT: process.env.PORT || 'Using default',
+    NODE_ENV: process.env.NODE_ENV || 'Not set'
+  });
 });
 
 // Check database indexes
