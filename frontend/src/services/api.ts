@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'http://localhost:3001/api',
+  baseURL: '/api',  // Use relative URL - works for both local dev and production
   headers: {
     'Content-Type': 'application/json',
   },
