@@ -26,7 +26,12 @@ app.use(compression()); // Enable gzip compression for all responses
 app.use(cors());
 app.use(express.json());
 
-// Routes
+// Serve static frontend files in production
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, '../../frontend/dist')));
+}
+
+// API Routes
 app.use('/api/projects', projectsRouter);
 app.use('/api/resources', resourcesRouter);
 app.use('/api/allocations', allocationsRouter);
@@ -114,6 +119,13 @@ app.get('/api/db-test', async (req, res) => {
     res.status(500).json({ error: 'Database connection failed', details: errorMessage });
   }
 });
+
+// Frontend fallback route for SPA routing
+if (process.env.NODE_ENV === 'production') {
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../../frontend/dist/index.html'));
+  });
+}
 
 // Start server
 const server = app.listen(PORT, () => {
