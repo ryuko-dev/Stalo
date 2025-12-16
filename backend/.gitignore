@@ -3,3 +3,5 @@ dist/
 .env
 *.log
 .DS_Store
+# Don't ignore public folder - it contains frontend build for production
+!public/

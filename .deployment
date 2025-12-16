@@ -1,0 +1,10 @@
+# Azure App Service build configuration
+# This file configures how Azure builds and deploys your app
+
+[config]
+SCM_DO_BUILD_DURING_DEPLOYMENT=true
+
+[build]
+# Install all dependencies and build
+PRE_BUILD_COMMAND=npm run install:all
+POST_BUILD_COMMAND=npm run build

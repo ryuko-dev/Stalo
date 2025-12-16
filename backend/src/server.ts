@@ -26,12 +26,7 @@ app.use(compression()); // Enable gzip compression for all responses
 app.use(cors());
 app.use(express.json());
 
-// Serve static frontend files in production
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../../frontend/dist')));
-}
-
-// API Routes
+// Routes
 app.use('/api/projects', projectsRouter);
 app.use('/api/resources', resourcesRouter);
 app.use('/api/allocations', allocationsRouter);
@@ -120,17 +115,23 @@ app.get('/api/db-test', async (req, res) => {
   }
 });
 
-// Frontend fallback route for SPA routing
-if (process.env.NODE_ENV === 'production') {
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../../frontend/dist/index.html'));
-  });
-}
+// Serve static frontend files in production
+const publicPath = path.join(__dirname, '../public');
+app.use(express.static(publicPath));
+
+// Handle client-side routing - serve index.html for all non-API routes
+app.get('*', (req, res) => {
+  // Don't serve index.html for API routes
+  if (!req.path.startsWith('/api')) {
+    res.sendFile(path.join(publicPath, 'index.html'));
+  }
+});
 
 // Start server
 const server = app.listen(PORT, () => {
   console.log(`🚀 Stalo backend server running on port ${PORT}`);
   console.log(`Server listening: ${server.listening}`);
+  console.log(`Serving static files from: ${publicPath}`);
 });
 
 server.on('error', (error: any) => {

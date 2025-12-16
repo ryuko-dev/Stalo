@@ -12,8 +12,7 @@ import {
   Select,
   MenuItem,
   Switch,
-  FormControlLabel,
-  Typography
+  FormControlLabel
 } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';

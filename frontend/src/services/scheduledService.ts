@@ -4,27 +4,27 @@ export interface ScheduledRecord {
   ScheduledID: number;
   Type: string;
   PurchaseDate: string;
-  Supplier: string;
-  Description: string;
+  Supplier?: string;
+  Description?: string;
   PurchaseCurrency: string;
   OriginalCurrencyValue: number;
   USDValue: number;
   UsefulMonths: number;
   Disposed: boolean;
-  DisposalDate?: string;
+  DisposalDate?: string | null;
 }
 
 export interface CreateScheduledRecord {
   Type: string;
   PurchaseDate: string;
-  Supplier: string;
-  Description: string;
+  Supplier?: string;
+  Description?: string;
   PurchaseCurrency: string;
   OriginalCurrencyValue: number;
   USDValue: number;
   UsefulMonths: number;
   Disposed: boolean;
-  DisposalDate?: string;
+  DisposalDate?: string | null;
 }
 
 export interface UpdateScheduledRecord {
@@ -37,7 +37,7 @@ export interface UpdateScheduledRecord {
   USDValue?: number;
   UsefulMonths?: number;
   Disposed?: boolean;
-  DisposalDate?: string;
+  DisposalDate?: string | null;
 }
 
 const scheduledService = {

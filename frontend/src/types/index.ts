@@ -66,3 +66,54 @@ export interface AllocationFormData {
   AllocationMode: string;
   LoE: number;
 }
+
+export interface DragAllocationData {
+  PositionID: string;
+  ResourceName: string;
+  MonthYear: string;
+  AllocationMode: string;
+  LoE: number;
+}
+
+export interface PayrollResource {
+  ID: string;
+  ResourceID: string;
+  ResourceName: string;
+  Name: string;
+  ResourceType: string;
+  Entity: string;
+  EntityID?: string;
+  DynamicsVendorAcc: string;
+  StartDate: string;
+  EndDate: string | null;
+  WorkDays: string;
+  Department: string;
+  EntityName?: string;
+  Currency?: string;
+}
+
+export interface PayrollRecord {
+  ID: string;
+  ResourceID: string;
+  ResourceName: string;
+  MonthYear: string;
+  Month?: string;
+  WorkDays: number;
+  WorkingDays?: string;
+  GrossSalary: number;
+  Fringe: number;
+  Total: number;
+  Department?: string | null;
+  EntityID?: string | null;
+  Currency?: string | null;
+  NetSalary?: number | null;
+  SocialSecurity?: number | null;
+  EmployeeTax?: number | null;
+  EmployerTax?: number | null;
+  Housing?: number | null;
+  CommunicationsOther?: number | null;
+  AnnualLeave?: number | null;
+  SickLeave?: number | null;
+  PublicHolidays?: number | null;
+  ProjectAllocations?: string | null;
+}
