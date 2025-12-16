@@ -47,14 +47,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: node-app
-      
-      - name: Login to Azure
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_6049DE6B7DB14AF597C2EE84572CFA1F }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_9617E2CA1E2D46638B38BC8FC6A3F14F }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_A1D54781F98B47DFB7E9C6559538D2C0 }}
-
+   
       - name: 'Deploy to Azure Web App'
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
@@ -62,4 +55,5 @@ jobs:
           app-name: 'stalo'
           slot-name: 'Production'
           package: .
+
           
