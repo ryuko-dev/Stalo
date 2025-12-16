@@ -1,32 +1,44 @@
-name: Deploy Backend to Azure Web App
+name: Deploy Backend to Azure App Service
 
+# Trigger on push to the main branch
 on:
   push:
-    branches: [ master ]
-  workflow_dispatch:
+    branches:
+      - main 
 
 jobs:
   deploy-backend:
     runs-on: ubuntu-latest
 
     steps:
+      # 1. Checkout the source code
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      # 2. Set up Node.js environment
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20.x' # IMPORTANT: Change to your required Node version
+          
+      # 3. Install dependencies and build (within the backend directory)
+      - name: Install dependencies and Build Backend
+        run: |
+          # Change directory to where package.json is located
+          cd backend 
+          npm install
+          # If you have a build step (e.g., Babel/TypeScript), include it here
+          # npm run build 
 
-      - name: Install backend deps
-        run: npm install
-        working-directory: backend
-
-      - name: Build backend
-        run: npm run build --if-present
-        working-directory: backend
-
-      - name: Deploy backend
-        uses: azure/webapps-deploy@v3
+      # 4. Deploy to Azure Web App
+      - name: 'Deploy Backend to Azure App Service'
+        uses: azure/webapps-deploy@v2
         with:
-          app-name: stalo
-          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-          package: backend
+          # IMPORTANT: Replace 'my-backend-api' with your actual Azure App Service name
+          app-name: 'stalo' 
+          
+          # The Secret you created earlier using the Publish Profile
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }} 
+          
+          # The path to the folder containing your backend code (backend/ folder)
+          # The deployment action will zip and deploy the contents of this folder.
+          package: './backend'
