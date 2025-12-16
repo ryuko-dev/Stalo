@@ -116,4 +116,5 @@ export interface PayrollRecord {
   SickLeave?: number | null;
   PublicHolidays?: number | null;
   ProjectAllocations?: string | null;
+  Locked?: boolean;
 }

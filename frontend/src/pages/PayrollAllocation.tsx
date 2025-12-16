@@ -40,7 +40,8 @@ import {
   getPayrollResources, 
   getPayrollRecords, 
   createOrUpdatePayrollRecord,
-  getPayrollProjects
+  getPayrollProjects,
+  lockPayrollMonth
 } from '../services/staloService';
 import type { PayrollResource, PayrollRecord } from '../types';
 import { format, startOfMonth, eachDayOfInterval, getDay, endOfMonth } from 'date-fns';
@@ -195,6 +196,15 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
       map.set(record.ResourceID, record);
     });
     return map;
+  }, [payrollRecords]);
+
+  // Initialize lock state from existing records
+  useEffect(() => {
+    if (payrollRecords && payrollRecords.length > 0) {
+      // If any record is locked, set isLocked to true
+      const anyLocked = payrollRecords.some(record => record.Locked);
+      setIsLocked(anyLocked);
+    }
   }, [payrollRecords]);
 
   // Save mutation for individual resource
@@ -566,16 +576,23 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
     });
   };
 
-  // Toggle lock/unlock functionality
-  const toggleLock = () => {
-    setIsLocked(prev => {
-      const newLockedState = !prev;
+  // Toggle lock/unlock functionality - updates database
+  const toggleLock = async () => {
+    const newLockedState = !isLocked;
+    const monthParam = format(selectedDate, 'yyyy-MM-dd');
+    
+    try {
+      const result = await lockPayrollMonth(monthParam, newLockedState);
+      setIsLocked(newLockedState);
       showNotification(
-        newLockedState ? 'All cells locked for editing' : 'All cells unlocked for editing', 
+        `${result.updatedCount} records ${newLockedState ? 'locked' : 'unlocked'} for this month`, 
         'success'
       );
-      return newLockedState;
-    });
+      // Refresh payroll records to get updated lock status
+      queryClient.invalidateQueries({ queryKey: ['payrollRecords'] });
+    } catch (error: any) {
+      showNotification(`Error updating lock status: ${error.message}`, 'error');
+    }
   };
 
   // Convert project allocations to percentages for all resources (toggle on/off)
@@ -1305,13 +1322,13 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
                           );
                         })}
                         <TableCell sx={{ fontSize: '0.7rem', py: 0, px: 1, height: '24px', border: '1px solid #e0e0e0', width: '40px', backgroundColor: '#f9f9f9' }}>
-                          <Tooltip title="Save record">
+                          <Tooltip title={isLocked ? "Records are locked" : "Save record"}>
                             <span>
                               <IconButton
                                 size="small"
                                 color={hasUnsavedChanges(resource.ResourceID) ? 'primary' : 'default'}
                                 onClick={() => handleSaveRecord(resource)}
-                                disabled={saveMutation.isPending}
+                                disabled={saveMutation.isPending || isLocked}
                                 sx={{ padding: '2px', height: '20px', width: '20px' }}
                               >
                                 <SaveIcon fontSize="inherit" sx={{ fontSize: '14px' }} />

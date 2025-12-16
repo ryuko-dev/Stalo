@@ -107,6 +107,16 @@ export const deleteAllocation = async (id: string): Promise<void> => {
   await api.delete(`/allocations/${id}`);
 };
 
+export const lockAllocationMonth = async (monthYear: string, locked: boolean): Promise<any> => {
+  const response = await api.patch(`/allocations/lock-month/${monthYear}`, { locked });
+  return response.data;
+};
+
+export const lockAllocation = async (id: string, locked: boolean): Promise<any> => {
+  const response = await api.patch(`/allocations/${id}/lock`, { locked });
+  return response.data;
+};
+
 export const getMonthlyAllocations = async (
   projectId: string,
   startDate: string,
