@@ -38,7 +38,7 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getPositionsCombinedData, createPosition, updatePosition, deletePosition, createAllocation, deleteAllocation, validatePositionAllocations } from '../services/staloService';
+import { getPositionsCombinedData, createPosition, updatePosition, deletePosition, checkPositionDeletion, createAllocation, deleteAllocation, validatePositionAllocations } from '../services/staloService';
 import type { PositionsCombinedData } from '../services/staloService';
 import type { Position } from '../types';
 import type { Resource } from '../types';
@@ -52,15 +52,42 @@ export default function Positions() {
     message: '',
     severity: 'success'
   });
+  
+  // State for deletion confirmation dialog
+  const [deleteConfirmation, setDeleteConfirmation] = useState<{
+    open: boolean;
+    positionId: string | null;
+    impact?: {
+      positionName: string;
+      projectName: string;
+      affectedResources: number;
+      affectedMonths: number;
+      resourceNames: string;
+      message: string;
+    };
+  }>({ open: false, positionId: null });
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'allocated' | 'unallocated'>('all');
   const [filterProject, setFilterProject] = useState<string>('all');
   const [editingPosition, setEditingPosition] = useState<Position | null>(null);
   
-  // Date range filter - defaults to current month
-  const today = new Date();
-  const [startDate, setStartDate] = useState<Date>(startOfMonth(today));
-  const [endDate, setEndDate] = useState<Date>(endOfMonth(today));
+  // Date range filter - defaults to selected month from App header (stored in localStorage)
+  const getSelectedMonth = () => {
+    const savedDate = localStorage.getItem('selectedDate');
+    if (savedDate) {
+      try {
+        return new Date(JSON.parse(savedDate));
+      } catch {
+        return new Date();
+      }
+    }
+    return new Date();
+  };
+  
+  const selectedMonth = getSelectedMonth();
+  const [startDate, setStartDate] = useState<Date>(startOfMonth(selectedMonth));
+  const [endDate, setEndDate] = useState<Date>(endOfMonth(selectedMonth));
 
   const showNotification = (message: string, severity: 'success' | 'error' = 'success') => {
     setNotification({ open: true, message, severity });
@@ -110,14 +137,43 @@ export default function Positions() {
     }
   });
 
-  const deleteMutation = useMutation<void, Error, string>({
-    mutationFn: (id) => deletePosition(id),
-    onSuccess: () => {
+  const deleteMutation = useMutation<void, Error, { id: string; confirmed: boolean }>({
+    mutationFn: async ({ id, confirmed }) => {
+      console.log('Delete mutation called with confirmed:', confirmed);
+      if (!confirmed) {
+        // First call - check if confirmation is needed
+        const response = await checkPositionDeletion(id);
+        console.log('Check deletion response:', response);
+        if (response.requiresConfirmation && response.impact) {
+          // Show confirmation dialog and throw error to prevent onSuccess
+          console.log('Showing confirmation dialog');
+          setDeleteConfirmation({
+            open: true,
+            positionId: id,
+            impact: response.impact
+          });
+          throw new Error('CONFIRMATION_REQUIRED'); // Special error to skip error notification
+        }
+        // If no confirmation required, the position was already deleted by checkPositionDeletion
+        console.log('No confirmation required, position deleted');
+        return;
+      }
+      // Confirmed deletion - proceed
+      console.log('Proceeding with confirmed deletion');
+      await deletePosition(id, true);
+    },
+    onSuccess: (data, variables) => {
+      console.log('Delete mutation onSuccess called');
       queryClient.invalidateQueries({ queryKey: ['positionsCombined'] });
       showNotification('Position deleted successfully!', 'success');
+      setDeleteConfirmation({ open: false, positionId: null });
     },
     onError: (error) => {
-      showNotification(`Error deleting position: ${error.message}`, 'error');
+      console.log('Delete mutation onError called:', error.message);
+      // Don't show error for confirmation required
+      if (error.message !== 'CONFIRMATION_REQUIRED') {
+        showNotification(`Error deleting position: ${error.message}`, 'error');
+      }
     }
   });
 
@@ -898,7 +954,7 @@ export default function Positions() {
                             <IconButton 
                               size="small" 
                               color="error" 
-                              onClick={() => deleteMutation.mutate(position.ID)}
+                              onClick={() => deleteMutation.mutate({ id: position.ID, confirmed: false })}
                               disabled={deleteMutation.isPending}
                             >
                               <DeleteIcon fontSize="small" />
@@ -1019,6 +1075,59 @@ export default function Positions() {
           </DialogContent>
           <DialogActions>
             <Button onClick={() => setEditingPosition(null)}>Close</Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog
+          open={deleteConfirmation.open}
+          onClose={() => setDeleteConfirmation({ open: false, positionId: null })}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>Confirm Position Deletion</DialogTitle>
+          <DialogContent>
+            {deleteConfirmation.impact && (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+                <Alert severity="warning">
+                  <Typography variant="body2" sx={{ mb: 1 }}>
+                    <strong>{deleteConfirmation.impact.message}</strong>
+                  </Typography>
+                  <Typography variant="body2">
+                    <strong>Position:</strong> {deleteConfirmation.impact.positionName}
+                  </Typography>
+                  <Typography variant="body2">
+                    <strong>Project:</strong> {deleteConfirmation.impact.projectName}
+                  </Typography>
+                  <Typography variant="body2">
+                    <strong>Affected Resources:</strong> {deleteConfirmation.impact.resourceNames}
+                  </Typography>
+                </Alert>
+                <Typography variant="body2" color="text.secondary">
+                  Are you sure you want to delete this position? This action cannot be undone.
+                </Typography>
+              </Box>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button 
+              onClick={() => setDeleteConfirmation({ open: false, positionId: null })}
+              color="inherit"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => {
+                if (deleteConfirmation.positionId) {
+                  deleteMutation.mutate({ id: deleteConfirmation.positionId, confirmed: true });
+                }
+              }}
+              color="error"
+              variant="contained"
+              disabled={deleteMutation.isPending}
+            >
+              Delete Position
+            </Button>
           </DialogActions>
         </Dialog>
       </Box>

@@ -46,7 +46,7 @@ import {
 import type { PayrollResource, PayrollRecord } from '../types';
 import { format, startOfMonth, eachDayOfInterval, getDay, endOfMonth } from 'date-fns';
 import * as XLSX from 'xlsx';
-import { getEntities } from '../services/staloService';
+import { getEntities, getPayrollAllocations } from '../services/staloService';
 
 interface PayrollAllocationProps {
   selectedDate: Date;
@@ -146,6 +146,13 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
     queryKey: ['entities'],
     queryFn: () => getEntities(),
     staleTime: 1000 * 60 * 10
+  });
+
+  // Fetch allocations with TaskID for journal generation
+  const { data: payrollAllocations } = useQuery<any[], Error>({
+    queryKey: ['payrollAllocations', monthParam],
+    queryFn: () => getPayrollAllocations(monthParam),
+    staleTime: 1000 * 60 * 2
   });
 
   // Group resources by entity
@@ -330,6 +337,12 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
     // Generate document number based on month
     const documentNo = `P${selectedDate.getMonth() + 1}/${selectedDate.getFullYear()}`;
     
+    // Track social security totals per entity
+    const entitySocialSecurityTotals = new Map<string, { total: number; entityName: string; ssAccCode: string; currencyCode: string }>();
+    
+    // Track tax totals per entity (employee + employer)
+    const entityTaxTotals = new Map<string, { total: number; entityName: string; taxAccCode: string; currencyCode: string }>();
+    
     // Process each resource that has allocations
     groupedResources.forEach(group => {
       group.resources.forEach(resource => {
@@ -349,15 +362,53 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
         const housing = getFieldValue(resource.ResourceID, 'Housing', 0) || 0;
         const commsOther = getFieldValue(resource.ResourceID, 'CommunicationsOther', 0) || 0;
         
+        // Get leave data for fringe benefit calculation
+        const annualLeave = getFieldValue(resource.ResourceID, 'AnnualLeave', 0) || 0;
+        const sickLeave = getFieldValue(resource.ResourceID, 'SickLeave', 0) || 0;
+        const publicHolidays = getFieldValue(resource.ResourceID, 'PublicHolidays', 0) || 0;
+        const dailyRate = calculateDailyRate(netSalary);
+        
+        // Calculate total hours across all projects for this resource
+        const totalHours = Object.values(projectAllocations).reduce((sum, hours) => sum + hours, 0);
+        
+        // Track totals for vendor payment line
+        let totalSalaryAmount = 0;
+        let totalFringeBenefitAmount = 0;
+        let totalHousingAmount = 0;
+        let totalCommsOtherAmount = 0;
+        
         // Create rows for each payroll component and project allocation
-        Object.entries(projectAllocations).forEach(([projectId, allocationValue]) => {
+        Object.entries(projectAllocations).forEach(([projectId, allocationHours]) => {
           const project = payrollProjects?.find(p => p.ID === projectId);
           const projectName = project?.Name || 'Unknown Project';
           
-          // Only create rows if allocation value exists
-          if (allocationValue > 0) {
+          // Find TaskID for this resource-project combination
+          const allocation = payrollAllocations?.find(
+            a => a.ResourceID === resource.ResourceID && a.ProjectID === projectId
+          );
+          const taskId = allocation?.TaskID || '';
+          
+          // Calculate allocation percentage based on hours (project hours / total hours)
+          const allocationPercent = totalHours > 0 ? allocationHours / totalHours : 0;
+          
+          // Check if project has fringe benefits
+          const hasFringeBenefits = project?.Fringe?.toLowerCase() === 'yes';
+          
+          // Calculate fringe benefit amount if applicable
+          let fringeBenefitAmount = 0;
+          if (hasFringeBenefits && dailyRate) {
+            const totalLeaveDays = annualLeave + sickLeave + publicHolidays;
+            fringeBenefitAmount = totalLeaveDays * dailyRate;
+          }
+          
+          // Only create rows if allocation hours exist
+          if (allocationHours > 0) {
             // Net Salary row
             if (netSalary > 0) {
+              // Reduce salary by fringe benefit amount if applicable
+              const adjustedSalary = hasFringeBenefits ? netSalary - fringeBenefitAmount : netSalary;
+              const allocatedAmount = adjustedSalary * allocationPercent;
+              totalSalaryAmount += allocatedAmount;
               rows.push({
                 Journal_Batch_Name: '',
                 Line_No: '',
@@ -374,16 +425,61 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
                 Vendor_Name: resource.ResourceName,
                 Transaction_Currency: resource.Currency || 'USD',
                 Currency_Code: resource.Currency || 'USD',
-                Transaction_Amount: netSalary.toFixed(2),
-                Amount: netSalary.toFixed(2),
+                Transaction_Amount: allocatedAmount.toFixed(2),
+                Amount: allocatedAmount.toFixed(2),
                 Project_Quantity: '1',
                 Project_No: projectName,
-                Project_Task_No: ''
+                Project_Task_No: salExpCode.startsWith('6') ? taskId : ''
+              });
+            }
+            
+            // Fringe Benefit (Leave) row - only if project has fringe benefits
+            if (hasFringeBenefits && fringeBenefitAmount > 0) {
+              const allocatedFringeBenefit = fringeBenefitAmount * allocationPercent;
+              totalFringeBenefitAmount += allocatedFringeBenefit;
+              rows.push({
+                Journal_Batch_Name: '',
+                Line_No: '',
+                Gen_Posting_Type: salExpCode.startsWith('6') ? 'Purchase' : '',
+                Posting_Date: formattedDate,
+                Document_Date: formattedDate,
+                Invoice_Date: formattedDate,
+                Document_No: documentNo,
+                Vendor_Invoice_Ref: documentNo,
+                External_Document_No: documentNo,
+                Account_Type: salExpCode.startsWith('6') ? 'G/L Account' : salExpCode.startsWith('1') ? 'Vendor' : '',
+                Account_No: salExpCode,
+                Description: `${resource.ResourceName} Fringe Benefit (Leave) ${monthYear}`,
+                Vendor_Name: resource.ResourceName,
+                Transaction_Currency: resource.Currency || 'USD',
+                Currency_Code: resource.Currency || 'USD',
+                Transaction_Amount: allocatedFringeBenefit.toFixed(2),
+                Amount: allocatedFringeBenefit.toFixed(2),
+                Project_Quantity: '1',
+                Project_No: projectName,
+                Project_Task_No: salExpCode.startsWith('6') ? taskId : ''
               });
             }
             
             // Social Security row
             if (socialSecurity > 0) {
+              const allocatedAmount = socialSecurity * allocationPercent;
+              
+              // Track entity-level social security total
+              if (entity) {
+                const currentEntityTotal = entitySocialSecurityTotals.get(entity.ID);
+                if (currentEntityTotal) {
+                  currentEntityTotal.total += allocatedAmount;
+                } else {
+                  entitySocialSecurityTotals.set(entity.ID, {
+                    total: allocatedAmount,
+                    entityName: entity.Name || resource.EntityName || '',
+                    ssAccCode: entity.SSAccCode || resource.SSAccCode || '',
+                    currencyCode: entity.CurrencyCode || resource.Currency || 'USD'
+                  });
+                }
+              }
+              
               rows.push({
                 Journal_Batch_Name: '',
                 Line_No: '',
@@ -400,16 +496,33 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
                 Vendor_Name: resource.ResourceName,
                 Transaction_Currency: resource.Currency || 'USD',
                 Currency_Code: resource.Currency || 'USD',
-                Transaction_Amount: socialSecurity.toFixed(2),
-                Amount: socialSecurity.toFixed(2),
+                Transaction_Amount: allocatedAmount.toFixed(2),
+                Amount: allocatedAmount.toFixed(2),
                 Project_Quantity: '1',
                 Project_No: projectName,
-                Project_Task_No: ''
+                Project_Task_No: ssExpCode.startsWith('6') ? taskId : ''
               });
             }
             
             // Employee Tax row
             if (employeeTax > 0) {
+              const allocatedAmount = employeeTax * allocationPercent;
+              
+              // Track entity-level employee tax total
+              if (entity) {
+                const currentEntityTotal = entityTaxTotals.get(entity.ID);
+                if (currentEntityTotal) {
+                  currentEntityTotal.total += allocatedAmount;
+                } else {
+                  entityTaxTotals.set(entity.ID, {
+                    total: allocatedAmount,
+                    entityName: entity.Name || resource.EntityName || '',
+                    taxAccCode: entity.TaxAccCode || resource.TaxAccCode || '',
+                    currencyCode: entity.CurrencyCode || resource.Currency || 'USD'
+                  });
+                }
+              }
+              
               rows.push({
                 Journal_Batch_Name: '',
                 Line_No: '',
@@ -426,16 +539,33 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
                 Vendor_Name: resource.ResourceName,
                 Transaction_Currency: resource.Currency || 'USD',
                 Currency_Code: resource.Currency || 'USD',
-                Transaction_Amount: employeeTax.toFixed(2),
-                Amount: employeeTax.toFixed(2),
+                Transaction_Amount: allocatedAmount.toFixed(2),
+                Amount: allocatedAmount.toFixed(2),
                 Project_Quantity: '1',
                 Project_No: projectName,
-                Project_Task_No: ''
+                Project_Task_No: taxExpCode.startsWith('6') ? taskId : ''
               });
             }
             
             // Employer Tax row
             if (employerTax > 0) {
+              const allocatedAmount = employerTax * allocationPercent;
+              
+              // Track entity-level employer tax total
+              if (entity) {
+                const currentEntityTotal = entityTaxTotals.get(entity.ID);
+                if (currentEntityTotal) {
+                  currentEntityTotal.total += allocatedAmount;
+                } else {
+                  entityTaxTotals.set(entity.ID, {
+                    total: allocatedAmount,
+                    entityName: entity.Name || resource.EntityName || '',
+                    taxAccCode: entity.TaxAccCode || resource.TaxAccCode || '',
+                    currencyCode: entity.CurrencyCode || resource.Currency || 'USD'
+                  });
+                }
+              }
+              
               rows.push({
                 Journal_Batch_Name: '',
                 Line_No: '',
@@ -452,16 +582,18 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
                 Vendor_Name: resource.ResourceName,
                 Transaction_Currency: resource.Currency || 'USD',
                 Currency_Code: resource.Currency || 'USD',
-                Transaction_Amount: employerTax.toFixed(2),
-                Amount: employerTax.toFixed(2),
+                Transaction_Amount: allocatedAmount.toFixed(2),
+                Amount: allocatedAmount.toFixed(2),
                 Project_Quantity: '1',
                 Project_No: projectName,
-                Project_Task_No: ''
+                Project_Task_No: taxExpCode.startsWith('6') ? taskId : ''
               });
             }
             
             // Housing row
             if (housing > 0) {
+              const allocatedAmount = housing * allocationPercent;
+              totalHousingAmount += allocatedAmount;
               rows.push({
                 Journal_Batch_Name: '',
                 Line_No: '',
@@ -478,16 +610,18 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
                 Vendor_Name: resource.ResourceName,
                 Transaction_Currency: resource.Currency || 'USD',
                 Currency_Code: resource.Currency || 'USD',
-                Transaction_Amount: housing.toFixed(2),
-                Amount: housing.toFixed(2),
+                Transaction_Amount: allocatedAmount.toFixed(2),
+                Amount: allocatedAmount.toFixed(2),
                 Project_Quantity: '1',
                 Project_No: projectName,
-                Project_Task_No: ''
+                Project_Task_No: salExpCode.startsWith('6') ? taskId : ''
               });
             }
             
             // Comms/Other row
             if (commsOther > 0) {
+              const allocatedAmount = commsOther * allocationPercent;
+              totalCommsOtherAmount += allocatedAmount;
               rows.push({
                 Journal_Batch_Name: '',
                 Line_No: '',
@@ -504,16 +638,101 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
                 Vendor_Name: resource.ResourceName,
                 Transaction_Currency: resource.Currency || 'USD',
                 Currency_Code: resource.Currency || 'USD',
-                Transaction_Amount: commsOther.toFixed(2),
-                Amount: commsOther.toFixed(2),
+                Transaction_Amount: allocatedAmount.toFixed(2),
+                Amount: allocatedAmount.toFixed(2),
                 Project_Quantity: '1',
                 Project_No: projectName,
-                Project_Task_No: ''
+                Project_Task_No: salExpCode.startsWith('6') ? taskId : ''
               });
             }
           }
         });
+        
+        // Add vendor payment line for this resource (offsetting entry)
+        if (totalSalaryAmount > 0 || totalFringeBenefitAmount > 0 || totalHousingAmount > 0 || totalCommsOtherAmount > 0) {
+          const totalPayrollAmount = totalSalaryAmount + totalFringeBenefitAmount + totalHousingAmount + totalCommsOtherAmount;
+          const vendorCurrency = getFieldValue(resource.ResourceID, 'Currency', resource.Currency) || resource.Currency || 'USD';
+          
+          rows.push({
+            Journal_Batch_Name: '',
+            Line_No: '',
+            Gen_Posting_Type: '',
+            Posting_Date: formattedDate,
+            Document_Date: formattedDate,
+            Invoice_Date: formattedDate,
+            Document_No: documentNo,
+            Vendor_Invoice_Ref: documentNo,
+            External_Document_No: documentNo,
+            Account_Type: 'Vendor',
+            Account_No: resource.DynamicsVendorAcc || '',
+            Description: `Payroll for ${resource.ResourceName} ${monthYear}`,
+            Vendor_Name: resource.ResourceName,
+            Transaction_Currency: vendorCurrency,
+            Currency_Code: vendorCurrency,
+            Transaction_Amount: (totalPayrollAmount * -1).toFixed(2),
+            Amount: (totalPayrollAmount * -1).toFixed(2),
+            Project_Quantity: '',
+            Project_No: '',
+            Project_Task_No: ''
+          });
+        }
       });
+    });
+    
+    // Add entity-level social security vendor payment lines
+    entitySocialSecurityTotals.forEach((entityData, entityId) => {
+      if (entityData.total > 0) {
+        rows.push({
+          Journal_Batch_Name: '',
+          Line_No: '',
+          Gen_Posting_Type: '',
+          Posting_Date: formattedDate,
+          Document_Date: formattedDate,
+          Invoice_Date: formattedDate,
+          Document_No: documentNo,
+          Vendor_Invoice_Ref: documentNo,
+          External_Document_No: documentNo,
+          Account_Type: 'Vendor',
+          Account_No: entityData.ssAccCode,
+          Description: `Social Security for ${entityData.entityName} ${monthYear}`,
+          Vendor_Name: entityData.entityName,
+          Transaction_Currency: entityData.currencyCode,
+          Currency_Code: entityData.currencyCode,
+          Transaction_Amount: (entityData.total * -1).toFixed(2),
+          Amount: (entityData.total * -1).toFixed(2),
+          Project_Quantity: '',
+          Project_No: '',
+          Project_Task_No: ''
+        });
+      }
+    });
+    
+    // Add entity-level tax vendor payment lines
+    entityTaxTotals.forEach((entityData, entityId) => {
+      if (entityData.total > 0) {
+        rows.push({
+          Journal_Batch_Name: '',
+          Line_No: '',
+          Gen_Posting_Type: '',
+          Posting_Date: formattedDate,
+          Document_Date: formattedDate,
+          Invoice_Date: formattedDate,
+          Document_No: documentNo,
+          Vendor_Invoice_Ref: documentNo,
+          External_Document_No: documentNo,
+          Account_Type: 'Vendor',
+          Account_No: entityData.taxAccCode,
+          Description: `Payroll Tax for ${entityData.entityName} ${monthYear}`,
+          Vendor_Name: entityData.entityName,
+          Transaction_Currency: entityData.currencyCode,
+          Currency_Code: entityData.currencyCode,
+          Transaction_Amount: (entityData.total * -1).toFixed(2),
+          Amount: (entityData.total * -1).toFixed(2),
+          Project_Quantity: '',
+          Project_No: '',
+          Project_Task_No: ''
+        });
+      }
     });
     
     return rows;
@@ -1437,6 +1656,52 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setJournalDialogOpen(false)}>Close</Button>
+          <Button 
+            variant="contained" 
+            startIcon={<DownloadIcon />}
+            onClick={() => {
+              const journalData = generateJournalRows();
+              const worksheet = XLSX.utils.json_to_sheet(journalData);
+              
+              // Format Transaction_Amount and Amount columns as numbers with 2 decimals
+              const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+              
+              // Find column indices for Transaction_Amount and Amount
+              let transactionAmountCol = -1;
+              let amountCol = -1;
+              
+              for (let col = range.s.c; col <= range.e.c; col++) {
+                const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col });
+                const cell = worksheet[cellAddress];
+                if (cell && cell.v === 'Transaction_Amount') transactionAmountCol = col;
+                if (cell && cell.v === 'Amount') amountCol = col;
+              }
+              
+              // Apply number format to these columns (skip header row)
+              for (let row = range.s.r + 1; row <= range.e.r; row++) {
+                if (transactionAmountCol >= 0) {
+                  const cellAddress = XLSX.utils.encode_cell({ r: row, c: transactionAmountCol });
+                  if (worksheet[cellAddress]) {
+                    worksheet[cellAddress].t = 'n'; // Set type to number
+                    worksheet[cellAddress].z = '0.00'; // Set format to 2 decimals
+                  }
+                }
+                if (amountCol >= 0) {
+                  const cellAddress = XLSX.utils.encode_cell({ r: row, c: amountCol });
+                  if (worksheet[cellAddress]) {
+                    worksheet[cellAddress].t = 'n'; // Set type to number
+                    worksheet[cellAddress].z = '0.00'; // Set format to 2 decimals
+                  }
+                }
+              }
+              
+              const workbook = XLSX.utils.book_new();
+              XLSX.utils.book_append_sheet(workbook, worksheet, 'Journal Entries');
+              XLSX.writeFile(workbook, `Journal_${format(selectedDate, 'yyyy-MM')}.xlsx`);
+            }}
+          >
+            Export to Excel
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

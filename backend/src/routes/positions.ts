@@ -297,19 +297,95 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// Delete position
+// Delete position (with confirmation support)
 router.delete('/:id', async (req, res) => {
   try {
     const pool = await getConnection();
-    const deleted = await pool
+    const { confirm } = req.query;
+    
+    console.log('Attempting to delete position:', req.params.id, 'confirm:', confirm);
+    
+    // Get position details and allocation impact
+    const impactQuery = await pool
       .request()
       .input('id', req.params.id)
-      .query('DELETE FROM dbo.Positions OUTPUT DELETED.ID WHERE ID = @id');
+      .query(`
+        SELECT 
+          p.ID,
+          p.PositionName,
+          pr.Name as ProjectName,
+          (SELECT COUNT(DISTINCT a.ResourceID) 
+           FROM dbo.Allocation a 
+           WHERE a.PositionID = p.ID) as affectedResources,
+          (SELECT COUNT(DISTINCT FORMAT(a.MonthYear, 'yyyy-MM')) 
+           FROM dbo.Allocation a 
+           WHERE a.PositionID = p.ID) as affectedMonths,
+          (SELECT STRING_AGG(r.Name, ', ') WITHIN GROUP (ORDER BY r.Name)
+           FROM dbo.Allocation a 
+           INNER JOIN dbo.Resources r ON a.ResourceID = r.ID 
+           WHERE a.PositionID = p.ID) as resourceNames
+        FROM dbo.Positions p
+        LEFT JOIN dbo.Projects pr ON p.Project = pr.ID
+        WHERE p.ID = @id
+      `);
     
-    if (deleted.recordset.length === 0) {
+    if (impactQuery.recordset.length === 0) {
       return res.status(404).json({ error: 'Position not found' });
     }
-    res.json({ success: true });
+    
+    const impact = impactQuery.recordset[0];
+    console.log('Position impact:', impact);
+    
+    // If no confirmation provided and there are allocations, return impact info
+    if (confirm !== 'true' && impact.affectedResources > 0) {
+      console.log('Position has allocations, requiring confirmation');
+      return res.status(200).json({
+        requiresConfirmation: true,
+        impact: {
+          positionName: impact.PositionName,
+          projectName: impact.ProjectName,
+          affectedResources: impact.affectedResources,
+          affectedMonths: impact.affectedMonths,
+          resourceNames: impact.resourceNames,
+          message: `Deleting this position will unallocate ${impact.affectedResources} resource(s) for ${impact.affectedMonths} month(s).`
+        }
+      });
+    }
+    
+    console.log('Proceeding with position deletion');
+    // Proceed with deletion (with cascade)
+    const transaction = pool.transaction();
+    await transaction.begin();
+    
+    try {
+      // Delete allocations first (cascade)
+      await transaction
+        .request()
+        .input('id', req.params.id)
+        .query('DELETE FROM dbo.Allocation WHERE PositionID = @id');
+      
+      // Delete position
+      const deleted = await transaction
+        .request()
+        .input('id', req.params.id)
+        .query('DELETE FROM dbo.Positions OUTPUT DELETED.ID WHERE ID = @id');
+      
+      if (deleted.recordset.length === 0) {
+        await transaction.rollback();
+        return res.status(404).json({ error: 'Position not found' });
+      }
+      
+      await transaction.commit();
+      
+      res.json({ 
+        success: true, 
+        message: 'Position and related allocations deleted successfully',
+        allocationsDeleted: impact.affectedResources * impact.affectedMonths
+      });
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
   } catch (error: any) {
     console.error('Error deleting position:', error);
     res.status(500).json({ error: 'Failed to delete position', details: error.message });

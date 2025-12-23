@@ -147,6 +147,21 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const pool = await getConnection();
+    
+    // Check if entity has resources
+    const resCheck = await pool
+      .request()
+      .input('id', req.params.id)
+      .query('SELECT COUNT(*) as count FROM dbo.Resources WHERE Entity = @id');
+    
+    if (resCheck.recordset[0].count > 0) {
+      return res.status(400).json({ 
+        error: 'Cannot delete entity with resources',
+        details: `This entity has ${resCheck.recordset[0].count} resource(s). Delete or reassign resources first.`,
+        resourcesCount: resCheck.recordset[0].count
+      });
+    }
+    
     const deleted = await pool.request().input('id', req.params.id).query('DELETE FROM dbo.Entities OUTPUT DELETED.ID WHERE ID = @id');
     if (deleted.recordset.length === 0) return res.status(404).json({ error: 'Entity not found' });
     res.json({ success: true });

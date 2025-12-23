@@ -121,6 +121,21 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const pool = await getConnection();
+    
+    // Check if project has positions
+    const posCheck = await pool
+      .request()
+      .input('id', req.params.id)
+      .query('SELECT COUNT(*) as count FROM dbo.Positions WHERE Project = @id');
+    
+    if (posCheck.recordset[0].count > 0) {
+      return res.status(400).json({ 
+        error: 'Cannot delete project with positions',
+        details: `This project has ${posCheck.recordset[0].count} position(s). Delete positions first.`,
+        positionsCount: posCheck.recordset[0].count
+      });
+    }
+    
     const deleted = await pool
       .request()
       .input('id', req.params.id)
@@ -130,10 +145,10 @@ router.delete('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    res.json({ success: true });
-  } catch (error) {
+    res.json({ success: true, message: 'Project deleted successfully' });
+  } catch (error: any) {
     console.error('Error deleting project:', error);
-    res.status(500).json({ error: 'Failed to delete project' });
+    res.status(500).json({ error: 'Failed to delete project', details: error.message });
   }
 });
 

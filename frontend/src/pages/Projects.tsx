@@ -102,8 +102,16 @@ export default function Projects() {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       showNotification('Project deleted successfully!', 'success');
     },
-    onError: (error) => {
-      showNotification(`Error deleting project: ${error.message}`, 'error');
+    onError: (error: any) => {
+      console.error('Delete project error:', error);
+      // Extract detailed error message from backend
+      let errorMessage = 'Failed to delete project';
+      if (error.response?.data) {
+        errorMessage = error.response.data.details || error.response.data.error || error.response.data.message || errorMessage;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      showNotification(errorMessage, 'error');
     }
   });
 
@@ -513,7 +521,7 @@ export default function Projects() {
       {/* Notification Snackbar */}
       <Snackbar
         open={notification.open}
-        autoHideDuration={4000}
+        autoHideDuration={notification.severity === 'error' ? 8000 : 4000}
         onClose={() => setNotification({ ...notification, open: false })}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
       >

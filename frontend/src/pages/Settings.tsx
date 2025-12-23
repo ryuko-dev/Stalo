@@ -646,8 +646,16 @@ function EntitiesManager() {
       queryClient.invalidateQueries({ queryKey: ['entities'] });
       showNotification('Entity deleted successfully!', 'success');
     },
-    onError: (error) => {
-      showNotification(`Error deleting entity: ${error.message}`, 'error');
+    onError: (error: any) => {
+      console.error('Delete entity error:', error);
+      // Extract detailed error message from backend
+      let errorMessage = 'Failed to delete entity';
+      if (error.response?.data) {
+        errorMessage = error.response.data.details || error.response.data.error || error.response.data.message || errorMessage;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      showNotification(errorMessage, 'error');
     }
   });
 
@@ -1102,7 +1110,7 @@ function EntitiesManager() {
       {/* Entity Notification Snackbar */}
       <Snackbar
         open={notification.open}
-        autoHideDuration={6000}
+        autoHideDuration={notification.severity === 'error' ? 10000 : 6000}
         onClose={() => setNotification({ ...notification, open: false })}
       >
         <Alert 

@@ -200,8 +200,28 @@ export default function Resources() {
       queryClient.invalidateQueries({ queryKey: ['resources'] });
       showNotification('Resource deleted successfully!', 'success');
     },
-    onError: (error) => {
-      showNotification(`Error deleting resource: ${error.message}`, 'error');
+    onError: (error: any) => {
+      console.log('=== DELETE ERROR DEBUG ===');
+      console.log('Full error object:', error);
+      console.log('error.response:', error.response);
+      console.log('error.response?.data:', error.response?.data);
+      console.log('error.response?.data?.details:', error.response?.data?.details);
+      console.log('error.response?.data?.error:', error.response?.data?.error);
+      console.log('error.message:', error.message);
+      console.log('========================');
+      
+      // Extract detailed error message from backend
+      let errorMessage = 'Failed to delete resource';
+      if (error.response?.data) {
+        console.log('Using response.data');
+        // Try to get the most detailed error message available
+        errorMessage = error.response.data.details || error.response.data.error || error.response.data.message || errorMessage;
+      } else if (error.message) {
+        console.log('Using error.message');
+        errorMessage = error.message;
+      }
+      console.log('Final error message:', errorMessage);
+      showNotification(errorMessage, 'error');
     }
   });
 
@@ -635,7 +655,7 @@ export default function Resources() {
         {/* Notification Snackbar */}
         <Snackbar
           open={notification.open}
-          autoHideDuration={4000}
+          autoHideDuration={notification.severity === 'error' ? 8000 : 4000}
           onClose={() => setNotification({ ...notification, open: false })}
           anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         >

@@ -107,16 +107,6 @@ export const deleteAllocation = async (id: string): Promise<void> => {
   await api.delete(`/allocations/${id}`);
 };
 
-export const lockAllocationMonth = async (monthYear: string, locked: boolean): Promise<any> => {
-  const response = await api.patch(`/allocations/lock-month/${monthYear}`, { locked });
-  return response.data;
-};
-
-export const lockAllocation = async (id: string, locked: boolean): Promise<any> => {
-  const response = await api.patch(`/allocations/${id}/lock`, { locked });
-  return response.data;
-};
-
 export const getMonthlyAllocations = async (
   projectId: string,
   startDate: string,
@@ -201,8 +191,29 @@ export const updatePosition = async (id: string, data: Partial<Position>): Promi
   return response.data;
 };
 
-export const deletePosition = async (id: string): Promise<void> => {
-  await api.delete(`/positions/${id}`);
+// Check position deletion impact (returns info if confirmation needed)
+export const checkPositionDeletion = async (id: string): Promise<{
+  requiresConfirmation: boolean;
+  impact?: {
+    positionName: string;
+    projectName: string;
+    affectedResources: number;
+    affectedMonths: number;
+    resourceNames: string;
+    message: string;
+  };
+}> => {
+  console.log('checkPositionDeletion called for id:', id);
+  const response = await api.delete(`/positions/${id}`);
+  console.log('checkPositionDeletion response:', response.data);
+  return response.data;
+};
+
+// Delete position with confirmation
+export const deletePosition = async (id: string, confirm: boolean = false): Promise<void> => {
+  await api.delete(`/positions/${id}`, {
+    params: { confirm: confirm ? 'true' : 'false' }
+  });
 };
 
 // Validate positions for given months - ensures all positions appear exactly once
@@ -245,6 +256,11 @@ export const getPayrollResources = async (month: string): Promise<PayrollResourc
 
 export const getPayrollRecords = async (month: string): Promise<PayrollRecord[]> => {
   const response = await api.get('/payroll/all', { params: { month } });
+  return response.data;
+};
+
+export const getPayrollAllocations = async (month: string): Promise<any[]> => {
+  const response = await api.get('/payroll/allocations', { params: { month } });
   return response.data;
 };
 

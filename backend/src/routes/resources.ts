@@ -144,6 +144,35 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const pool = await getConnection();
+    
+    console.log('Attempting to delete resource:', req.params.id);
+    
+    // Check if resource has any allocations
+    const allocCheck = await pool
+      .request()
+      .input('id', req.params.id)
+      .query(`
+        SELECT 
+          COUNT(*) as count, 
+          STRING_AGG(p.PositionName + ' (' + FORMAT(a.MonthYear, 'yyyy-MM') + ')', ', ') WITHIN GROUP (ORDER BY a.MonthYear) as positions
+        FROM dbo.Allocation a
+        INNER JOIN dbo.Positions p ON a.PositionID = p.ID
+        INNER JOIN dbo.Projects pr ON p.Project = pr.ID
+        WHERE a.ResourceID = @id
+      `);
+    
+    console.log('Resource allocation check:', allocCheck.recordset[0]);
+    
+    if (allocCheck.recordset[0].count > 0) {
+      console.log('Resource has allocations, blocking deletion');
+      return res.status(400).json({ 
+        error: 'Cannot delete resource with active allocations',
+        details: `This resource is allocated to: ${allocCheck.recordset[0].positions || 'positions'}`,
+        allocationsCount: allocCheck.recordset[0].count
+      });
+    }
+    
+    console.log('Resource has no allocations, proceeding with deletion');
     const deleted = await pool
       .request()
       .input('id', req.params.id)
@@ -152,7 +181,9 @@ router.delete('/:id', async (req, res) => {
     if (deleted.recordset.length === 0) {
       return res.status(404).json({ error: 'Resource not found' });
     }
-    res.json({ success: true });
+    
+    console.log('Resource deleted successfully');
+    res.json({ success: true, message: 'Resource deleted successfully' });
   } catch (error: any) {
     console.error('Error deleting resource:', error);
     res.status(500).json({ error: 'Failed to delete resource', details: error.message });

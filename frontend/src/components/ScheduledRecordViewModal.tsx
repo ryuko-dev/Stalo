@@ -42,33 +42,15 @@ export default function ScheduledRecordViewModal({
             </Box>
             <Box>
               <Typography variant="caption" color="textSecondary">
+                Item Name
+              </Typography>
+              <Typography>{record.ItemName}</Typography>
+            </Box>
+            <Box>
+              <Typography variant="caption" color="textSecondary">
                 Purchase Date
               </Typography>
               <Typography>{new Date(record.PurchaseDate).toLocaleDateString()}</Typography>
-            </Box>
-            <Box>
-              <Typography variant="caption" color="textSecondary">
-                Supplier
-              </Typography>
-              <Typography>{record.Supplier}</Typography>
-            </Box>
-            <Box>
-              <Typography variant="caption" color="textSecondary">
-                Description
-              </Typography>
-              <Typography>{record.Description}</Typography>
-            </Box>
-            <Box>
-              <Typography variant="caption" color="textSecondary">
-                Purchase Currency
-              </Typography>
-              <Typography>{record.PurchaseCurrency}</Typography>
-            </Box>
-            <Box>
-              <Typography variant="caption" color="textSecondary">
-                Original Currency Value
-              </Typography>
-              <Typography>{record.OriginalCurrencyValue.toFixed(2)}</Typography>
             </Box>
             <Box>
               <Typography variant="caption" color="textSecondary">

@@ -349,4 +349,42 @@ router.patch('/lock-month', async (req, res) => {
   }
 });
 
+// Get allocations with TaskID for a specific month
+router.get('/allocations', async (req, res) => {
+  try {
+    const { month } = req.query; // Format: YYYY-MM-DD (first day of month)
+    
+    if (!month) {
+      return res.status(400).json({ error: 'Month parameter is required (format: YYYY-MM-DD)' });
+    }
+
+    const pool = await getConnection();
+    
+    const result = await pool
+      .request()
+      .input('month', sql.Date, month)
+      .query(`
+        SELECT 
+          a.ResourceID,
+          a.ProjectID,
+          a.PositionID,
+          r.Name as ResourceName,
+          p.Name as ProjectName,
+          pos.TaskID,
+          a.MonthYear
+        FROM dbo.Allocation a
+        INNER JOIN dbo.Resources r ON a.ResourceID = r.ID
+        INNER JOIN dbo.Projects p ON a.ProjectID = p.ID
+        INNER JOIN dbo.Positions pos ON a.PositionID = pos.ID
+        WHERE YEAR(a.MonthYear) = YEAR(@month) 
+          AND MONTH(a.MonthYear) = MONTH(@month)
+      `);
+
+    res.json(result.recordset);
+  } catch (error: any) {
+    console.error('Error fetching payroll allocations:', error);
+    res.status(500).json({ error: 'Failed to fetch payroll allocations', details: error.message });
+  }
+});
+
 export default router;
