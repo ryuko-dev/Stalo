@@ -3,6 +3,7 @@ import api from './api';
 export interface ScheduledRecord {
   ScheduledID: number;
   Type: string;
+  ItemName?: string;
   PurchaseDate: string;
   Supplier?: string;
   Description?: string;
