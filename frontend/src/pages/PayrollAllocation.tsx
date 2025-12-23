@@ -680,7 +680,7 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
     });
     
     // Add entity-level social security vendor payment lines
-    entitySocialSecurityTotals.forEach((entityData, entityId) => {
+    entitySocialSecurityTotals.forEach((entityData) => {
       if (entityData.total > 0) {
         rows.push({
           Journal_Batch_Name: '',
@@ -708,7 +708,7 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
     });
     
     // Add entity-level tax vendor payment lines
-    entityTaxTotals.forEach((entityData, entityId) => {
+    entityTaxTotals.forEach((entityData) => {
       if (entityData.total > 0) {
         rows.push({
           Journal_Batch_Name: '',

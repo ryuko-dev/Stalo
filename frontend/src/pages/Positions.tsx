@@ -162,7 +162,7 @@ export default function Positions() {
       console.log('Proceeding with confirmed deletion');
       await deletePosition(id, true);
     },
-    onSuccess: (data, variables) => {
+    onSuccess: () => {
       console.log('Delete mutation onSuccess called');
       queryClient.invalidateQueries({ queryKey: ['positionsCombined'] });
       showNotification('Position deleted successfully!', 'success');

@@ -90,6 +90,8 @@ export interface PayrollResource {
   Department: string;
   EntityName?: string;
   Currency?: string;
+  SSAccCode?: string;
+  TaxAccCode?: string;
 }
 
 export interface PayrollRecord {
