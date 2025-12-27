@@ -1,8 +1,8 @@
-import { Box, Typography, Button, Card, CardContent, Chip, Tooltip, TextField, FormControl, InputLabel, Select, MenuItem, Alert, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, CircularProgress, Autocomplete } from '@mui/material';
+import { Box, Typography, Button, Card, CardContent, Chip, Tooltip, TextField, Alert, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, CircularProgress, Autocomplete } from '@mui/material';
 import { CloudSync as CloudSyncIcon } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useState, useEffect } from 'react';
-import { getBusinessCentralService, initBusinessCentralService } from '../services/businessCentralService';
+import { getBusinessCentralService } from '../services/businessCentralService';
 
 interface ProjectLedgerEntry {
   Donor_Project_No: string;
@@ -167,7 +167,7 @@ export default function Report() {
               size="small"
               options={projectOptions}
               value={projectFilter}
-              onChange={(event, newValue) => setProjectFilter(newValue || '')}
+              onChange={(_, newValue) => setProjectFilter(newValue || '')}
               renderInput={(params) => <TextField {...params} label="Donor Project No" />}
               disabled={!isAuthenticated}
               loading={isLoadingProjects}

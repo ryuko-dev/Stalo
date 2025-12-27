@@ -24,7 +24,7 @@ const queryClient = new QueryClient();
 
 function AppContent() {
   const { isAuthenticated, userDisplayName, logout } = useAuth();
-  const { userRole, hasAccess, isLoadingPermissions, getPagePermissions, canAccessSettings, isSuperAdmin, viewingAsRole, setViewingAsRole } = usePermissions();
+  const { userRole, hasAccess, getPagePermissions, canAccessSettings, isSuperAdmin, viewingAsRole, setViewingAsRole } = usePermissions();
 
   // Load saved date from localStorage or use current date
   const getSavedDate = () => {
