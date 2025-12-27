@@ -29,7 +29,9 @@ import {
   Save as SaveIcon,
   Search as SearchIcon,
   ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon
+  ExpandLess as ExpandLessIcon,
+  RemoveRedEye as ViewAsIcon,
+  ExitToApp as ExitIcon
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -42,8 +44,14 @@ import type { SystemUser } from '../types/systemUsers';
 import type { SystemUserCreate } from '../types/systemUsers';
 import type { Entity, EntityCreate, EntityUpdate } from '../types/entities';
 import { format } from 'date-fns';
+import { usePermissions } from '../contexts/PermissionsContext';
+import type { RoleType } from '../types/systemUsers';
+
+// Super admin email - cannot be changed or deleted
+const SUPER_ADMIN_EMAIL = 'sinan.mecit@arkgroupdmcc.com';
 
 export default function Settings() {
+  const { isSuperAdmin, viewingAsRole, setViewingAsRole, actualRole } = usePermissions();
   const queryClient = useQueryClient();
   const [notification, setNotification] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
     open: false,
@@ -181,6 +189,77 @@ export default function Settings() {
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
       <Box sx={{ p: 2, backgroundColor: '#f8f9fa', minHeight: '100vh' }}>
+        {/* Super Admin View As Control */}
+        {isSuperAdmin && (
+          <Card sx={{ mb: 2, boxShadow: 2, border: '2px solid #1976d2' }}>
+            <CardContent sx={{ p: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, mb: viewingAsRole ? 2 : 0 }}>
+                <ViewAsIcon sx={{ color: '#1976d2', mt: 0.5 }} />
+                <Box sx={{ flexGrow: 1 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#1976d2', mb: 2 }}>
+                    Super Admin View Mode
+                  </Typography>
+                  
+                  <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 2, flexWrap: 'wrap' }}>
+                    <Box>
+                      <Typography variant="caption" sx={{ display: 'block', color: '#666', mb: 0.5 }}>
+                        Current View:
+                      </Typography>
+                      <Chip 
+                        label={viewingAsRole || actualRole || 'Admin'}
+                        color={viewingAsRole ? 'warning' : 'primary'}
+                        sx={{ fontWeight: 'bold' }}
+                      />
+                    </Box>
+                    
+                    <FormControl size="small" sx={{ minWidth: 180 }}>
+                      <Typography variant="caption" sx={{ display: 'block', color: '#666', mb: 0.5 }}>
+                        View as Role:
+                      </Typography>
+                      <Select
+                        value={viewingAsRole || ''}
+                        onChange={(e) => setViewingAsRole(e.target.value as RoleType)}
+                        displayEmpty
+                        renderValue={(value) => {
+                          if (!value) return <em>Normal Admin View</em>;
+                          return value;
+                        }}
+                      >
+                        <MenuItem value="">
+                          <em>Normal Admin View</em>
+                        </MenuItem>
+                        {roleOptions.map((role) => (
+                          <MenuItem key={role} value={role}>{role}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    
+                    {viewingAsRole && (
+                      <Button
+                        variant="contained"
+                        color="error"
+                        startIcon={<ExitIcon />}
+                        onClick={() => setViewingAsRole(null)}
+                        size="medium"
+                      >
+                        Exit View Mode
+                      </Button>
+                    )}
+                  </Box>
+                </Box>
+              </Box>
+              
+              {viewingAsRole && (
+                <Alert severity="info" sx={{ mt: 0 }}>
+                  You are viewing the application as a <strong>{viewingAsRole}</strong> user. 
+                  Navigation and permissions are temporarily restricted to review the user experience. 
+                  Select "Normal Admin View" or click "Exit View Mode" to return to your full admin access.
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Compact Header */}
         <Card sx={{ mb: 2, boxShadow: 1 }}>
           <CardContent sx={{ p: 1, '&:last-child': { pb: 1 } }}>
@@ -212,6 +291,106 @@ export default function Settings() {
 
         {!usersSectionCollapsed && (
           <>
+            {/* Role Permissions Matrix */}
+            <Card sx={{ mb: 2, boxShadow: 1 }}>
+              <CardContent sx={{ p: 2 }}>
+                <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#1976d2' }}>
+                  Role Permissions Matrix
+                </Typography>
+                <TableContainer>
+                  <Table size="small" sx={{ '& td, & th': { fontSize: '0.75rem', py: 0.5 } }}>
+                    <TableHead>
+                      <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                        <TableCell sx={{ fontWeight: 'bold', width: '25%' }}>Page / Feature</TableCell>
+                        <TableCell align="center" sx={{ fontWeight: 'bold', width: '18.75%' }}>
+                          <Chip label="Admin" color="error" size="small" />
+                        </TableCell>
+                        <TableCell align="center" sx={{ fontWeight: 'bold', width: '18.75%' }}>
+                          <Chip label="Budget Manager" color="primary" size="small" />
+                        </TableCell>
+                        <TableCell align="center" sx={{ fontWeight: 'bold', width: '18.75%' }}>
+                          <Chip label="Viewer" color="default" size="small" />
+                        </TableCell>
+                        <TableCell align="center" sx={{ fontWeight: 'bold', width: '18.75%' }}>
+                          <Chip label="Editor" color="success" size="small" />
+                        </TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      <TableRow>
+                        <TableCell><strong>Home</strong></TableCell>
+                        <TableCell align="center">✅ Full Access</TableCell>
+                        <TableCell align="center">👁️ View Only</TableCell>
+                        <TableCell align="center">👁️ View Only + Click Links</TableCell>
+                        <TableCell align="center">✅ Full Access</TableCell>
+                      </TableRow>
+                      <TableRow sx={{ backgroundColor: '#fafafa' }}>
+                        <TableCell><strong>Gantt Chart</strong></TableCell>
+                        <TableCell align="center">✅ Full Access</TableCell>
+                        <TableCell align="center">👁️ View Only</TableCell>
+                        <TableCell align="center">👁️ View Only</TableCell>
+                        <TableCell align="center">✅ Full Access</TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell><strong>Projects</strong></TableCell>
+                        <TableCell align="center">✅ Full Access</TableCell>
+                        <TableCell align="center">👁️ View Only</TableCell>
+                        <TableCell align="center">❌ No Access</TableCell>
+                        <TableCell align="center">✅ Full Access</TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell><strong>Positions</strong></TableCell>
+                        <TableCell align="center">✅ Full Access</TableCell>
+                        <TableCell align="center">👁️ View Only</TableCell>
+                        <TableCell align="center">❌ No Access</TableCell>
+                        <TableCell align="center">✅ Full Access</TableCell>
+                      </TableRow>
+                      <TableRow sx={{ backgroundColor: '#fafafa' }}>
+                        <TableCell><strong>Resources</strong></TableCell>
+                        <TableCell align="center">✅ Full Access</TableCell>
+                        <TableCell align="center">👁️ View Only</TableCell>
+                        <TableCell align="center">❌ No Access</TableCell>
+                        <TableCell align="center">✅ Full Access</TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell><strong>Payroll Allocation</strong></TableCell>
+                        <TableCell align="center">✅ Full Access</TableCell>
+                        <TableCell align="center">👁️ View Only</TableCell>
+                        <TableCell align="center">❌ No Access</TableCell>
+                        <TableCell align="center">✅ Full Access</TableCell>
+                      </TableRow>
+                      <TableRow sx={{ backgroundColor: '#fafafa' }}>
+                        <TableCell><strong>Scheduled Records</strong></TableCell>
+                        <TableCell align="center">✅ Full Access</TableCell>
+                        <TableCell align="center">✏️ Edit + Delete</TableCell>
+                        <TableCell align="center">❌ No Access</TableCell>
+                        <TableCell align="center">✅ Full Access</TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell><strong>Reports</strong></TableCell>
+                        <TableCell align="center">✅ Full Access</TableCell>
+                        <TableCell align="center">👁️ View + 📥 Export</TableCell>
+                        <TableCell align="center">❌ No Access</TableCell>
+                        <TableCell align="center">✅ Full Access</TableCell>
+                      </TableRow>
+                      <TableRow sx={{ backgroundColor: '#fafafa' }}>
+                        <TableCell><strong>Settings</strong></TableCell>
+                        <TableCell align="center">✅ Full Access</TableCell>
+                        <TableCell align="center">❌ No Access</TableCell>
+                        <TableCell align="center">❌ No Access</TableCell>
+                        <TableCell align="center">❌ No Access</TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+                <Box sx={{ mt: 2, p: 1, backgroundColor: '#e3f2fd', borderRadius: 1 }}>
+                  <Typography variant="caption" sx={{ display: 'block', color: '#1565c0' }}>
+                    <strong>Legend:</strong> ✅ Full Access (View/Edit/Delete) • 👁️ View Only • ✏️ Edit Access • 📥 Export • ❌ No Access
+                  </Typography>
+                </Box>
+              </CardContent>
+            </Card>
+
             {/* Filters */}
             <Card sx={{ mb: 2, boxShadow: 1 }}>
           <CardContent sx={{ p: 1, '&:last-child': { pb: 1 } }}>
@@ -506,6 +685,7 @@ export default function Settings() {
                                 <Select 
                                   value={editFormData.Role ?? ''} 
                                   onChange={(e) => handleEditFieldChange('Role', String(e.target.value))}
+                                  disabled={user.EmailAddress.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()}
                                   sx={{ fontSize: '0.75rem' }}
                                 >
                                   {roleOptions.map((role) => (
@@ -514,9 +694,14 @@ export default function Settings() {
                                 </Select>
                               </FormControl>
                             ) : (
-                              <Typography sx={{ fontSize: '0.75rem' }}>
-                                {user.Role}
-                              </Typography>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                <Typography sx={{ fontSize: '0.75rem' }}>
+                                  {user.Role || 'Admin'}
+                                </Typography>
+                                {user.EmailAddress.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase() && (
+                                  <Chip label="Protected" size="small" color="error" sx={{ height: '16px', fontSize: '0.65rem' }} />
+                                )}
+                              </Box>
                             )}
                           </TableCell>
                           <TableCell sx={{ fontSize: '0.75rem', p: 1 }}>
@@ -545,6 +730,7 @@ export default function Settings() {
                                   size="small" 
                                   color="primary" 
                                   onClick={() => handleEditClick(user)}
+                                  disabled={user.EmailAddress.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()}
                                   sx={{ p: 0.5 }}
                                 >
                                   <EditIcon fontSize="small" />
@@ -553,6 +739,7 @@ export default function Settings() {
                                   size="small" 
                                   color="error" 
                                   onClick={() => deleteMutation.mutate(user.ID)}
+                                  disabled={user.EmailAddress.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()}
                                   sx={{ p: 0.5 }}
                                 >
                                   <DeleteIcon fontSize="small" />

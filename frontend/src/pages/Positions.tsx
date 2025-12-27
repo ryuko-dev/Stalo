@@ -39,6 +39,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getPositionsCombinedData, createPosition, updatePosition, deletePosition, checkPositionDeletion, createAllocation, deleteAllocation, validatePositionAllocations } from '../services/staloService';
+import { usePermissions } from '../contexts/PermissionsContext';
 import type { PositionsCombinedData } from '../services/staloService';
 import type { Position } from '../types';
 import type { Resource } from '../types';
@@ -47,6 +48,8 @@ import { format, isWithinInterval, isBefore, isAfter, startOfMonth, endOfMonth }
 
 export default function Positions() {
   const queryClient = useQueryClient();
+  const { getPagePermissions } = usePermissions();
+  const pagePermissions = getPagePermissions('positions');
   const [notification, setNotification] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
     open: false,
     message: '',
@@ -164,7 +167,11 @@ export default function Positions() {
     },
     onSuccess: () => {
       console.log('Delete mutation onSuccess called');
+      // Invalidate all queries that might be affected by position deletion
       queryClient.invalidateQueries({ queryKey: ['positionsCombined'] });
+      queryClient.invalidateQueries({ queryKey: ['allocations'] });
+      queryClient.invalidateQueries({ queryKey: ['resources'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
       showNotification('Position deleted successfully!', 'success');
       setDeleteConfirmation({ open: false, positionId: null });
     },
@@ -600,11 +607,12 @@ export default function Positions() {
         </Box>
 
         {/* Compact Add Position Form */}
-        <Card sx={{ mb: 2, boxShadow: 1 }}>
-          <CardContent sx={{ p: 1, '&:last-child': { pb: 1 } }}>
-            <Typography variant="caption" sx={{ fontWeight: 'bold', mb: 1, display: 'block', color: '#666' }}>
-              ADD NEW POSITION
-            </Typography>
+        {pagePermissions.canEdit && (
+          <Card sx={{ mb: 2, boxShadow: 1 }}>
+            <CardContent sx={{ p: 1, '&:last-child': { pb: 1 } }}>
+              <Typography variant="caption" sx={{ fontWeight: 'bold', mb: 1, display: 'block', color: '#666' }}>
+                ADD NEW POSITION
+              </Typography>
             
             {/* Header Row */}
             <Box sx={{ display: 'flex', gap: 1, mb: 0.5, alignItems: 'center' }}>
@@ -741,6 +749,7 @@ export default function Positions() {
             </Box>
           </CardContent>
         </Card>
+        )}
 
         {/* Compact Positions Table */}
         <Card sx={{ boxShadow: 1 }}>
@@ -943,22 +952,26 @@ export default function Positions() {
                         </TableCell>
                         <TableCell sx={{ p: 0.5, textAlign: 'center' }}>
                           <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
-                            <IconButton 
-                              size="small" 
-                              color="primary" 
-                              onClick={() => setEditingPosition(position)}
-                              disabled={updateMutation.isPending}
-                            >
-                              <EditIcon fontSize="small" />
-                            </IconButton>
-                            <IconButton 
-                              size="small" 
-                              color="error" 
-                              onClick={() => deleteMutation.mutate({ id: position.ID, confirmed: false })}
-                              disabled={deleteMutation.isPending}
-                            >
-                              <DeleteIcon fontSize="small" />
-                            </IconButton>
+                            {pagePermissions.canEdit && (
+                              <IconButton 
+                                size="small" 
+                                color="primary" 
+                                onClick={() => setEditingPosition(position)}
+                                disabled={updateMutation.isPending}
+                              >
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                            )}
+                            {pagePermissions.canDelete && (
+                              <IconButton 
+                                size="small" 
+                                color="error" 
+                                onClick={() => deleteMutation.mutate({ id: position.ID, confirmed: false })}
+                                disabled={deleteMutation.isPending}
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            )}
                           </Box>
                         </TableCell>
                       </TableRow>

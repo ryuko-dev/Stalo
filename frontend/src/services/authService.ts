@@ -44,12 +44,12 @@ const msalConfig: Configuration = {
   },
 };
 
-// Business Central OData Scopes
-const bcScopes = [
-  'https://api.businesscentral.dynamics.com/.default',
-  'offline_access',
+// Microsoft Graph scopes for user identity (removed BC scopes - backend handles BC auth)
+const loginScopes = [
   'openid',
   'profile',
+  'email',
+  'offline_access',
 ];
 
 let msalInstance: PublicClientApplication | null = null;
@@ -57,17 +57,24 @@ let msalInstance: PublicClientApplication | null = null;
 /**
  * Initialize MSAL instance (singleton pattern)
  */
-export function initMsal(): PublicClientApplication {
+
+/**
+ * Initialize MSAL instance (singleton pattern, async)
+ */
+export async function initMsal(): Promise<PublicClientApplication> {
   if (msalInstance) return msalInstance;
 
-  // If client ID is not configured, create instance anyway but auth will fail
-  // This allows the app to run without OAuth2 configured
   if (!msalConfig.auth.clientId) {
     console.warn('MSAL Client ID not configured. OAuth2 authentication disabled. Please configure VITE_MSAL_CLIENT_ID in .env.local to enable.');
   }
 
   msalInstance = new PublicClientApplication(msalConfig);
-  
+
+  // Await the new async initialize() method if available
+  if (typeof msalInstance.initialize === 'function') {
+    await msalInstance.initialize();
+  }
+
   // Handle the redirect from Azure AD after login
   msalInstance.handleRedirectPromise().catch((error: any) => {
     console.error('MSAL redirect error:', error);
@@ -79,9 +86,9 @@ export function initMsal(): PublicClientApplication {
 /**
  * Get the MSAL instance
  */
-export function getMsalInstance(): PublicClientApplication {
+export async function getMsalInstance(): Promise<PublicClientApplication> {
   if (!msalInstance) {
-    return initMsal();
+    return await initMsal();
   }
   return msalInstance;
 }
@@ -90,10 +97,10 @@ export function getMsalInstance(): PublicClientApplication {
  * Login with popup
  */
 export async function loginPopup(): Promise<AuthenticationResult> {
-  const msalClient = getMsalInstance();
+  const msalClient = await getMsalInstance();
 
   const loginRequest: PopupRequest = {
-    scopes: bcScopes,
+    scopes: loginScopes,
     prompt: 'select_account',
   };
 
@@ -112,10 +119,10 @@ export async function loginPopup(): Promise<AuthenticationResult> {
  * Login with redirect (full page redirect to login)
  */
 export async function loginRedirect(): Promise<void> {
-  const msalClient = getMsalInstance();
+  const msalClient = await getMsalInstance();
 
   const loginRequest: RedirectRequest = {
-    scopes: bcScopes,
+    scopes: loginScopes,
     prompt: 'select_account',
   };
 
@@ -132,7 +139,7 @@ export async function loginRedirect(): Promise<void> {
  * Logout
  */
 export async function logout(): Promise<void> {
-  const msalClient = getMsalInstance();
+  const msalClient = await getMsalInstance();
   const account = msalClient.getActiveAccount();
 
   if (account) {
@@ -147,7 +154,7 @@ export async function logout(): Promise<void> {
  * Returns token from cache if valid, or refreshes silently
  */
 export async function getAccessToken(): Promise<string> {
-  const msalClient = getMsalInstance();
+  const msalClient = await getMsalInstance();
   const accounts = msalClient.getAllAccounts();
 
   if (accounts.length === 0) {
@@ -157,7 +164,7 @@ export async function getAccessToken(): Promise<string> {
   const account = accounts[0];
 
   const silentRequest: SilentRequest = {
-    scopes: bcScopes,
+    scopes: loginScopes,
     account: account,
   };
 
@@ -184,8 +191,8 @@ export async function getAccessToken(): Promise<string> {
 /**
  * Get current user account
  */
-export function getCurrentAccount(): AccountInfo | null {
-  const msalClient = getMsalInstance();
+export async function getCurrentAccount(): Promise<AccountInfo | null> {
+  const msalClient = await getMsalInstance();
   const accounts = msalClient.getAllAccounts();
   return accounts.length > 0 ? accounts[0] : null;
 }
@@ -193,23 +200,23 @@ export function getCurrentAccount(): AccountInfo | null {
 /**
  * Check if user is authenticated
  */
-export function isAuthenticated(): boolean {
-  return getCurrentAccount() !== null;
+export async function isAuthenticated(): Promise<boolean> {
+  return (await getCurrentAccount()) !== null;
 }
 
 /**
  * Get user display name
  */
-export function getUserDisplayName(): string {
-  const account = getCurrentAccount();
+export async function getUserDisplayName(): Promise<string> {
+  const account = await getCurrentAccount();
   return account?.name || 'Unknown User';
 }
 
 /**
  * Get user email
  */
-export function getUserEmail(): string {
-  const account = getCurrentAccount();
+export async function getUserEmail(): Promise<string> {
+  const account = await getCurrentAccount();
   return account?.username || '';
 }
 

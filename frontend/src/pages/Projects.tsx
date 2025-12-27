@@ -39,6 +39,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getProjects, createProject, updateProject, deleteProject, getSystemUsers } from '../services/staloService';
 import { useAuth } from '../contexts/AuthContext';
+import { usePermissions } from '../contexts/PermissionsContext';
 import type { Project } from '../types';
 import type { SystemUser } from '../types/systemUsers';
 import GanttChart from './GanttChart';
@@ -49,6 +50,8 @@ const allocationModes = ['%', 'Days'];
 export default function Projects() {
   const queryClient = useQueryClient();
   const { isAuthenticated, login, logout, userDisplayName, isLoading: authLoading } = useAuth();
+  const { getPagePermissions } = usePermissions();
+  const pagePermissions = getPagePermissions('projects');
   const [notification, setNotification] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
     open: false,
     message: '',
@@ -217,11 +220,12 @@ export default function Projects() {
       </Box>
 
       {/* Compact Add Project Form */}
-      <Card sx={{ mb: 2, boxShadow: 1 }}>
-        <CardContent sx={{ p: 1, '&:last-child': { pb: 1 } }}>
-          <Typography variant="caption" sx={{ fontWeight: 'bold', mb: 1, display: 'block', color: '#666' }}>
-            ADD NEW PROJECT
-          </Typography>
+      {pagePermissions.canEdit && (
+        <Card sx={{ mb: 2, boxShadow: 1 }}>
+          <CardContent sx={{ p: 1, '&:last-child': { pb: 1 } }}>
+            <Typography variant="caption" sx={{ fontWeight: 'bold', mb: 1, display: 'block', color: '#666' }}>
+              ADD NEW PROJECT
+            </Typography>
           
           {/* Header Row */}
           <Box sx={{ display: 'flex', gap: 1, mb: 0.5, alignItems: 'center' }}>
@@ -371,7 +375,7 @@ export default function Projects() {
           </Box>
         </CardContent>
       </Card>
-
+      )}\n
       {/* Compact Projects Table */}
       <Card sx={{ boxShadow: 1 }}>
         <CardContent sx={{ p: 0, '&:last-child': { pb: 0 } }}>
@@ -491,22 +495,26 @@ export default function Projects() {
                       </TableCell>
                       <TableCell sx={{ p: 0.5, textAlign: 'center' }}>
                         <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
-                          <IconButton 
-                            size="small" 
-                            color="primary" 
-                            onClick={() => setEditingProject(p)}
-                            disabled={updateMutation.isPending}
-                          >
-                            <EditIcon fontSize="small" />
-                          </IconButton>
-                          <IconButton 
-                            size="small" 
-                            color="error" 
-                            onClick={() => deleteMutation.mutate(p.ID)}
-                            disabled={deleteMutation.isPending}
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
+                          {pagePermissions.canEdit && (
+                            <IconButton 
+                              size="small" 
+                              color="primary" 
+                              onClick={() => setEditingProject(p)}
+                              disabled={updateMutation.isPending}
+                            >
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                          )}
+                          {pagePermissions.canDelete && (
+                            <IconButton 
+                              size="small" 
+                              color="error" 
+                              onClick={() => deleteMutation.mutate(p.ID)}
+                              disabled={deleteMutation.isPending}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          )}
                         </Box>
                       </TableCell>
                     </TableRow>

@@ -2,7 +2,7 @@
  * Authentication Context
  * 
  * Provides authentication state and methods to the entire app via React Context.
- * Handles login/logout and maintains current user information.
+ * Handles login/logout and maintains current user information with role-based access control.
  */
 
 import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
@@ -16,6 +16,8 @@ import {
   getUserDisplayName,
   getUserEmail,
 } from '../services/authService';
+import { getSystemUsers, createSystemUser } from '../services/staloService';
+import type { SystemUserCreate } from '../types/systemUsers';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -36,23 +38,82 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<AccountInfo | null>(null);
+  const [userDisplayName, setUserDisplayName] = useState<string>('');
+  const [userEmail, setUserEmail] = useState<string>('');
 
-  // Initialize MSAL on mount
+  // Check if user exists in system users table, if not create them
+  const ensureUserInDatabase = async (displayName: string, email: string) => {
+    try {
+      // Wait for database connection with longer timeout
+      const maxWaitTime = 30000; // 30 seconds max
+      const retryInterval = 2000; // 2 seconds between retries
+      const startTime = Date.now();
+      
+      while (Date.now() - startTime < maxWaitTime) {
+        try {
+          // Check if user already exists
+          const systemUsers = await getSystemUsers();
+          const existingUser = systemUsers.find(u => u.EmailAddress.toLowerCase() === email.toLowerCase());
+          
+          if (!existingUser) {
+            // Create new system user with first login date
+            const newUser: SystemUserCreate = {
+              Name: displayName,
+              EmailAddress: email,
+              StartDate: new Date().toISOString().split('T')[0], // YYYY-MM-DD format
+              EndDate: null,
+              Active: true,
+              Role: '', // Empty role to be assigned by admin later
+            };
+            
+            await createSystemUser(newUser);
+            console.log(`✅ New user added to system: ${displayName} (${email})`);
+          }
+          return; // Success, exit retry loop
+        } catch (err: any) {
+          const elapsed = Math.round((Date.now() - startTime) / 1000);
+          console.log(`⏳ Waiting for database connection... (${elapsed}s elapsed)`);
+          await new Promise(resolve => setTimeout(resolve, retryInterval));
+        }
+      }
+      
+      // If timeout reached
+      console.error('⚠️ Database connection timeout. User can still log in, but role assignment may be delayed');
+    } catch (err) {
+      console.error('Error ensuring user in database:', err);
+      // Don't block login if this fails
+    }
+  };
+
+  // Initialize MSAL on mount and check for existing session
   useEffect(() => {
     const initializeAuth = async () => {
       try {
-        initMsal();
-        setIsAuthenticated(msalIsAuthenticated());
-        setUser(getCurrentAccount());
+        await initMsal();
+        const authenticated = await msalIsAuthenticated();
+        const account = await getCurrentAccount();
+        
+        setIsAuthenticated(authenticated);
+        setUser(account);
+        
+        if (account) {
+          const displayName = await getUserDisplayName();
+          const email = await getUserEmail();
+          setUserDisplayName(displayName);
+          setUserEmail(email);
+          
+          // Ensure user is in the system users table
+          await ensureUserInDatabase(displayName, email);
+          
+          console.log(`✅ User auto-logged in: ${displayName} (${email})`);
+        }
       } catch (err: any) {
         console.error('MSAL initialization error:', err);
-        // Set error but don't block app - auth is optional
         setError(`Auth setup: ${err.message || 'Configuration missing'}`);
       } finally {
         setIsLoading(false);
       }
     };
-    
     initializeAuth();
   }, []);
 
@@ -61,9 +122,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setError(null);
       setIsLoading(true);
       await loginPopup();
+      
+      const account = await getCurrentAccount();
+      const displayName = await getUserDisplayName();
+      const email = await getUserEmail();
+      
       setIsAuthenticated(true);
-      setUser(getCurrentAccount());
-      console.log('✅ Login successful');
+      setUser(account);
+      setUserDisplayName(displayName);
+      setUserEmail(email);
+      
+      // Ensure user is in the system users table
+      await ensureUserInDatabase(displayName, email);
+      
+      console.log(`✅ Login successful: ${displayName} (${email})`);
+      setIsLoading(false);
     } catch (err: any) {
       if (err.errorCode === 'user_cancelled_login') {
         console.log('User cancelled login');
@@ -89,6 +162,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       await msalLogout();
       setIsAuthenticated(false);
       setUser(null);
+      setUserDisplayName('');
+      setUserEmail('');
       console.log('✅ Logout successful');
     } catch (err: any) {
       setError(err.message || 'Logout failed');
@@ -103,8 +178,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     isLoading,
     error,
     user,
-    userDisplayName: getUserDisplayName(),
-    userEmail: getUserEmail(),
+    userDisplayName,
+    userEmail,
     login: handleLogin,
     logout: handleLogout,
     clearError,

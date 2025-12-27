@@ -43,6 +43,7 @@ import {
   getPayrollProjects,
   lockPayrollMonth
 } from '../services/staloService';
+import { usePermissions } from '../contexts/PermissionsContext';
 import type { PayrollResource, PayrollRecord } from '../types';
 import { format, startOfMonth, eachDayOfInterval, getDay, endOfMonth } from 'date-fns';
 import * as XLSX from 'xlsx';
@@ -98,6 +99,8 @@ interface GroupedResources {
 
 export default function PayrollAllocation({ selectedDate }: PayrollAllocationProps) {
   const queryClient = useQueryClient();
+  const { getPagePermissions, isAdmin } = usePermissions();
+  const pagePermissions = getPagePermissions('payroll');
   const [notification, setNotification] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
     open: false,
     message: '',
@@ -1100,18 +1103,20 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
               Payroll Allocation - {format(selectedDate, 'MMMM yyyy')}
             </Typography>
             <Box sx={{ display: 'flex', gap: 1 }}>
-              <Tooltip title={isLocked ? "Unlock All Cells" : "Lock All Cells"}>
-                <span>
-                  <IconButton 
-                    onClick={toggleLock} 
-                    disabled={isLoading} 
-                    size="small"
-                    color={isLocked ? "warning" : "default"}
-                  >
-                    {isLocked ? <LockIcon fontSize="small" /> : <LockOpenIcon fontSize="small" />}
-                  </IconButton>
-                </span>
-              </Tooltip>
+              {isAdmin && (
+                <Tooltip title={isLocked ? "Unlock All Cells" : "Lock All Cells"}>
+                  <span>
+                    <IconButton 
+                      onClick={toggleLock} 
+                      disabled={isLoading} 
+                      size="small"
+                      color={isLocked ? "warning" : "default"}
+                    >
+                      {isLocked ? <LockIcon fontSize="small" /> : <LockOpenIcon fontSize="small" />}
+                    </IconButton>
+                  </span>
+                </Tooltip>
+              )}
               <Tooltip title={isPercentageMode ? "Revert to Original Values" : "Convert to Percentages"}>
                 <span>
                   <IconButton 
@@ -1541,19 +1546,21 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
                           );
                         })}
                         <TableCell sx={{ fontSize: '0.7rem', py: 0, px: 1, height: '24px', border: '1px solid #e0e0e0', width: '40px', backgroundColor: '#f9f9f9' }}>
-                          <Tooltip title={isLocked ? "Records are locked" : "Save record"}>
-                            <span>
-                              <IconButton
-                                size="small"
-                                color={hasUnsavedChanges(resource.ResourceID) ? 'primary' : 'default'}
-                                onClick={() => handleSaveRecord(resource)}
-                                disabled={saveMutation.isPending || isLocked}
-                                sx={{ padding: '2px', height: '20px', width: '20px' }}
-                              >
-                                <SaveIcon fontSize="inherit" sx={{ fontSize: '14px' }} />
-                              </IconButton>
-                            </span>
-                          </Tooltip>
+                          {pagePermissions.canEdit && (
+                            <Tooltip title={isLocked ? "Records are locked" : "Save record"}>
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  color={hasUnsavedChanges(resource.ResourceID) ? 'primary' : 'default'}
+                                  onClick={() => handleSaveRecord(resource)}
+                                  disabled={saveMutation.isPending || isLocked}
+                                  sx={{ padding: '2px', height: '20px', width: '20px' }}
+                                >
+                                  <SaveIcon fontSize="inherit" sx={{ fontSize: '14px' }} />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                          )}
                         </TableCell>
                       </TableRow>
                     );
