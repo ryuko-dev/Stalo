@@ -28,6 +28,11 @@ jobs:
 
       - name: Build frontend (outputs to backend/public)
         working-directory: ./frontend
+        env:
+          VITE_MSAL_CLIENT_ID: ${{ secrets.VITE_MSAL_CLIENT_ID }}
+          VITE_MSAL_TENANT_ID: ${{ secrets.VITE_MSAL_TENANT_ID }}
+          VITE_MSAL_REDIRECT_URI: ${{ secrets.VITE_MSAL_REDIRECT_URI }}
+          VITE_MSAL_LOGOUT_REDIRECT_URI: ${{ secrets.VITE_MSAL_LOGOUT_REDIRECT_URI }}
         run: npm run build
 
       - name: Build backend
