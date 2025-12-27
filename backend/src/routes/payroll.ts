@@ -61,6 +61,7 @@ router.get('/', async (req, res) => {
         SELECT DISTINCT
           r.ID as ResourceID,
           r.Name as ResourceName,
+          r.ResourceType,
           r.WorkDays,
           r.Department,
           r.DynamicsVendorAcc,
@@ -74,6 +75,7 @@ router.get('/', async (req, res) => {
         LEFT JOIN dbo.Entities e ON r.Entity = e.ID
         WHERE YEAR(a.MonthYear) = YEAR(@month) 
           AND MONTH(a.MonthYear) = MONTH(@month)
+          AND r.ResourceType != 'SME'
         ORDER BY e.Name, r.Name
       `);
 

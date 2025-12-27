@@ -44,7 +44,7 @@ import type { PositionsCombinedData } from '../services/staloService';
 import type { Position } from '../types';
 import type { Resource } from '../types';
 import type { Allocation } from '../types';
-import { format, isWithinInterval, isBefore, isAfter, startOfMonth, endOfMonth } from 'date-fns';
+import { format, isWithinInterval, isBefore, isAfter, startOfMonth, endOfMonth, parse } from 'date-fns';
 
 export default function Positions() {
   const queryClient = useQueryClient();
@@ -302,7 +302,10 @@ export default function Positions() {
         );
       });
       
-      map.set(monthStr!, validResources);
+      // Sort resources alphabetically by name
+      const sortedResources = validResources.sort((a, b) => a.Name.localeCompare(b.Name));
+      
+      map.set(monthStr!, sortedResources);
     });
     
     return map;
@@ -500,6 +503,8 @@ export default function Positions() {
       }
 
       const monthColumns = lines[0].split(',').slice(4); // Skip first 4 columns
+      console.log('Month columns from CSV:', monthColumns);
+      
       const monthMap = new Map<string, string>();
       
       monthColumns.forEach((month, index) => {
@@ -529,10 +534,24 @@ export default function Positions() {
           const loeValue = parseFloat(values[j].replace(/"/g, '').trim()) || 0;
           
           if (loeValue > 0) {
-            const monthColumn = monthColumns[j - 4];
-            // Convert month name back to date
-            const date = new Date(monthColumn + ' 1');
-            const isoString = date.toISOString().split('T')[0];
+            const monthColumn = monthColumns[j - 4].trim();
+            console.log('Parsing month column:', monthColumn);
+            
+            // Parse month column (format is "MMM-yy" like "Jan-26")
+            // Use reference date to ensure 2-digit years are interpreted correctly (26 = 2026)
+            const parsedDate = parse(monthColumn, 'MMM-yy', new Date('2000-01-01'));
+            console.log('Parsed date:', parsedDate, 'Year:', parsedDate.getFullYear(), 'Month:', parsedDate.getMonth());
+            
+            // Validate the parsed date
+            if (isNaN(parsedDate.getTime())) {
+              console.error('Failed to parse date:', monthColumn);
+              continue;
+            }
+            
+            const year = parsedDate.getFullYear();
+            const month = parsedDate.getMonth();
+            const isoString = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+            console.log('ISO String:', isoString);
             
             newPositions.push({
               Project: projectObj.ID,

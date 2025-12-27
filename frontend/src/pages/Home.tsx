@@ -102,19 +102,20 @@ export default function Home({ selectedDate }: HomeProps) {
     const displayValue = convertToDisplayValue(loe, allocationMode);
     
     if (displayMode === 'days') {
-      // Days mode thresholds (18-22 days = optimal, 20 days = 100% equivalent)
-      if (displayValue >= 18 && displayValue <= 22) {
-        return '#4caf50'; // professional green
-      } else if (displayValue < 18) {
-        return '#ffb300'; // golden yellow
+      // Days mode thresholds (17-24 days = optimal, 20 days = 100% equivalent)
+      // <85% = <17 days, 85-120% = 17-24 days, >120% = >24 days
+      if (displayValue >= 17 && displayValue <= 24) {
+        return '#4caf50'; // professional green (85-120%)
+      } else if (displayValue < 17) {
+        return '#ffb300'; // golden yellow (<85%)
       } else {
-        return '#f44336'; // professional red
+        return '#f44336'; // professional red (>120%)
       }
     } else {
-      // Percentage mode thresholds (90-110% = optimal)
-      if (displayValue >= 90 && displayValue <= 110) {
+      // Percentage mode thresholds (85-120% = optimal)
+      if (displayValue >= 85 && displayValue <= 120) {
         return '#4caf50'; // professional green
-      } else if (displayValue < 90) {
+      } else if (displayValue < 85) {
         return '#ffb300'; // golden yellow
       } else {
         return '#f44336'; // professional red
@@ -560,6 +561,9 @@ export default function Home({ selectedDate }: HomeProps) {
   // Memoized to prevent recalculation on every render
   const filteredResources = useMemo(() => {
     return resources.filter(resource => {
+      // Filter out resources with Track = false
+      if (resource.Track === false) return false;
+      
       if (!resource.StartDate) return false;
       
       const resourceStart = new Date(resource.StartDate);
@@ -598,7 +602,7 @@ export default function Home({ selectedDate }: HomeProps) {
 
   // Group filtered resources by department - memoized
   const resourcesByDepartment = useMemo(() => {
-    return filteredResources.reduce((acc, resource) => {
+    const grouped = filteredResources.reduce((acc, resource) => {
       const department = resource.Department || 'Unknown Department';
       if (!acc[department]) {
         acc[department] = [];
@@ -606,6 +610,9 @@ export default function Home({ selectedDate }: HomeProps) {
       acc[department].push(resource);
       return acc;
     }, {} as Record<string, typeof filteredResources>);
+    
+    // Sort departments alphabetically and return as an array of [department, resources] tuples
+    return Object.entries(grouped).sort((a, b) => a[0].localeCompare(b[0]));
   }, [filteredResources]);
 
   // Filter unallocated positions and group by month - memoized
@@ -664,8 +671,8 @@ export default function Home({ selectedDate }: HomeProps) {
     const headers = ['Resource Name', 'Department', ...monthProjects, 'Total'];
     allocationData.push(headers);
     
-    // Add department and resource rows
-    Object.entries(resourcesByDepartment).forEach(([department, deptResources]) => {
+    // Add department and resource rows (resourcesByDepartment is now a sorted array)
+    resourcesByDepartment.forEach(([department, deptResources]) => {
       // Add department header
       allocationData.push([department, '', ...Array(monthProjects.length + 1).fill('')]);
       
@@ -762,8 +769,8 @@ export default function Home({ selectedDate }: HomeProps) {
     });
     allocationData.push(unallocatedRow);
     
-    // Add department and resource rows
-    Object.entries(resourcesByDepartment).forEach(([department, deptResources]) => {
+    // Add department and resource rows (already sorted)
+    resourcesByDepartment.forEach(([department, deptResources]) => {
       // Add department header
       allocationData.push([department, '', ...Array(months.length).fill('')]);
       
@@ -1066,7 +1073,7 @@ export default function Home({ selectedDate }: HomeProps) {
             </TableRow>
           </TableHead>
           <TableBody>
-            {Object.entries(resourcesByDepartment).map(([department, departmentResources]) => (
+            {resourcesByDepartment.map(([department, departmentResources]) => (
               <React.Fragment key={department}>
                 {/* Department header row */}
                 <TableRow>
@@ -1160,7 +1167,8 @@ export default function Home({ selectedDate }: HomeProps) {
                               (() => {
                                 const allocationDate = new Date(a.MonthYear);
                                 return isWithinInterval(allocationDate, { start: monthStart, end: monthEnd });
-                              })()
+                              })() &&
+                              (selectedProjectFilter === 'all' || a.ProjectID === selectedProjectFilter)
                             );
                             
                             if (cellAllocations.length > 0) {
@@ -1638,7 +1646,7 @@ export default function Home({ selectedDate }: HomeProps) {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {Object.entries(resourcesByDepartment).map(([department, departmentResources]) => (
+                  {resourcesByDepartment.map(([department, departmentResources]) => (
                     <React.Fragment key={department}>
                       {/* Department header row */}
                       <TableRow>
@@ -1668,7 +1676,8 @@ export default function Home({ selectedDate }: HomeProps) {
                           (() => {
                             const allocationDate = new Date(a.MonthYear);
                             return isWithinInterval(allocationDate, { start: monthStart, end: monthEnd });
-                          })()
+                          })() &&
+                          (selectedProjectFilter === 'all' || a.ProjectID === selectedProjectFilter)
                         );
                         
                         // Get unique projects for this month
@@ -1739,8 +1748,8 @@ export default function Home({ selectedDate }: HomeProps) {
                                       backgroundColor: 'grey.300',
                                       '& .MuiLinearProgress-bar': {
                                         backgroundColor: displayMode === 'days' 
-                                          ? (percentageToDays(totalLoE) >= 18 && percentageToDays(totalLoE) <= 22 ? '#2e7d32' : percentageToDays(totalLoE) > 22 ? '#d32f2f' : '#f57c00')
-                                          : (totalLoE >= 90 && totalLoE <= 110 ? '#2e7d32' : totalLoE > 110 ? '#d32f2f' : '#f57c00'),
+                                          ? (percentageToDays(totalLoE) >= 17 && percentageToDays(totalLoE) <= 24 ? '#4caf50' : percentageToDays(totalLoE) > 24 ? '#f44336' : '#ffb300')
+                                          : (totalLoE >= 85 && totalLoE <= 120 ? '#4caf50' : totalLoE > 120 ? '#f44336' : '#ffb300'),
                                         borderRadius: 2,
                                       }
                                     }}

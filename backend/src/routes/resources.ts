@@ -47,7 +47,7 @@ router.get('/:id', async (req, res) => {
 // Create new resource
 router.post('/', async (req, res) => {
   try {
-    const { Name, ResourceType, Entity, DynamicsVendorAcc, StartDate, EndDate, WorkDays, Department } = req.body;
+    const { Name, ResourceType, Entity, DynamicsVendorAcc, StartDate, EndDate, WorkDays, Department, Track } = req.body;
     const pool = await getConnection();
 
     // If Entity is a name (not a GUID), find the entity ID
@@ -75,12 +75,13 @@ router.post('/', async (req, res) => {
       .input('EndDate', EndDate ? sql.Date : sql.Date, EndDate || null)
       .input('WorkDays', sql.NVarChar(20), WorkDays)
       .input('Department', sql.NVarChar(200), Department)
+      .input('Track', sql.Bit, Track !== undefined ? Track : true)
       .query(`
-        INSERT INTO dbo.Resources (Name, ResourceType, Entity, DynamicsVendorAcc, StartDate, EndDate, WorkDays, Department)
+        INSERT INTO dbo.Resources (Name, ResourceType, Entity, DynamicsVendorAcc, StartDate, EndDate, WorkDays, Department, Track)
         OUTPUT INSERTED.ID, INSERTED.Name, INSERTED.ResourceType, INSERTED.Entity, 
                INSERTED.DynamicsVendorAcc, INSERTED.StartDate, INSERTED.EndDate, 
-               INSERTED.WorkDays, INSERTED.Department
-        VALUES (@Name, @ResourceType, @Entity, @DynamicsVendorAcc, @StartDate, @EndDate, @WorkDays, @Department)
+               INSERTED.WorkDays, INSERTED.Department, INSERTED.Track
+        VALUES (@Name, @ResourceType, @Entity, @DynamicsVendorAcc, @StartDate, @EndDate, @WorkDays, @Department, @Track)
       `);
 
     res.status(201).json(result.recordset[0]);
@@ -93,7 +94,7 @@ router.post('/', async (req, res) => {
 // Update resource
 router.put('/:id', async (req, res) => {
   try {
-    const { Name, ResourceType, Entity, DynamicsVendorAcc, StartDate, EndDate, WorkDays, Department } = req.body;
+    const { Name, ResourceType, Entity, DynamicsVendorAcc, StartDate, EndDate, WorkDays, Department, Track } = req.body;
     const pool = await getConnection();
 
     await pool
@@ -107,6 +108,7 @@ router.put('/:id', async (req, res) => {
       .input('EndDate', EndDate !== undefined ? (EndDate ? sql.Date : sql.Date) : sql.Date, EndDate !== undefined ? (EndDate || null) : null)
       .input('WorkDays', sql.NVarChar(20), WorkDays)
       .input('Department', sql.NVarChar(200), Department)
+      .input('Track', sql.Bit, Track)
       .query(`
         UPDATE dbo.Resources
         SET Name = COALESCE(@Name, Name),
@@ -116,7 +118,8 @@ router.put('/:id', async (req, res) => {
             StartDate = COALESCE(@StartDate, StartDate),
             EndDate = CASE WHEN @EndDate IS NOT NULL THEN @EndDate ELSE EndDate END,
             WorkDays = COALESCE(@WorkDays, WorkDays),
-            Department = COALESCE(@Department, Department)
+            Department = COALESCE(@Department, Department),
+            Track = COALESCE(@Track, Track)
         WHERE ID = @id
       `);
 

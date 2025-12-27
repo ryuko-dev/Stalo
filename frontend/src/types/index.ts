@@ -33,6 +33,7 @@ export interface Resource {
   WorkDays: string;
   Department: string;
   EntityName?: string;
+  Track?: boolean;
 }
 
 export interface Allocation {

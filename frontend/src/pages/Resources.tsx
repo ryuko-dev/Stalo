@@ -23,7 +23,8 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
+  Checkbox
 } from '@mui/material';
 import { 
   Delete as DeleteIcon, 
@@ -246,9 +247,9 @@ export default function Resources() {
   const filteredResources = useMemo(() => {
     return resources
       .filter(resource => {
-        const matchesSearch = resource.Name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                             resource.Department.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                             resource.DynamicsVendorAcc.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        const matchesSearch = resource.Name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                             resource.Department?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                             resource.DynamicsVendorAcc?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                              (resource.EntityName?.toLowerCase().includes(searchTerm.toLowerCase()));
         
         const matchesType = filterType === 'all' || 
@@ -573,13 +574,14 @@ export default function Resources() {
                     <TableCell sx={{ fontSize: '0.7rem', fontWeight: 'bold', p: 0.5 }}>End Date</TableCell>
                     <TableCell sx={{ fontSize: '0.7rem', fontWeight: 'bold', p: 0.5 }}>Work Days</TableCell>
                     <TableCell sx={{ fontSize: '0.7rem', fontWeight: 'bold', p: 0.5 }}>Department</TableCell>
+                    <TableCell sx={{ fontSize: '0.7rem', fontWeight: 'bold', p: 0.5, textAlign: 'center' }}>Track</TableCell>
                     <TableCell sx={{ fontSize: '0.7rem', fontWeight: 'bold', p: 0.5, textAlign: 'center' }}>Actions</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {filteredResources.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} align="center" sx={{ py: 2 }}>
+                      <TableCell colSpan={10} align="center" sx={{ py: 2 }}>
                         <Typography variant="body2" color="text.secondary">
                           {resources.length === 0 ? 'No resources found. Create your first resource above!' : 'No resources match your filters.'}
                         </Typography>
@@ -627,6 +629,19 @@ export default function Resources() {
                           <Typography variant="caption" sx={{ fontSize: '0.7rem' }}>
                             {resource.Department}
                           </Typography>
+                        </TableCell>
+                        <TableCell sx={{ p: 0.5, textAlign: 'center' }}>
+                          <Checkbox
+                            checked={resource.Track !== false}
+                            onChange={(e) => {
+                              updateMutation.mutate({
+                                id: resource.ID,
+                                payload: { Track: e.target.checked }
+                              });
+                            }}
+                            disabled={!pagePermissions.canEdit || updateMutation.isPending}
+                            size="small"
+                          />
                         </TableCell>
                         <TableCell sx={{ p: 0.5, textAlign: 'center' }}>
                           <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
