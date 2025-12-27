@@ -2,7 +2,6 @@ import { Box, Typography, Button, Card, CardContent, Chip, Tooltip, TextField, A
 import { CloudSync as CloudSyncIcon } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useState, useEffect } from 'react';
-import { getBusinessCentralService } from '../services/businessCentralService';
 
 interface ProjectLedgerEntry {
   Donor_Project_No: string;
