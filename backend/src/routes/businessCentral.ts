@@ -42,9 +42,9 @@ async function getAccessToken(): Promise<string> {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     });
 
-    accessToken = response.data.access_token;
+    accessToken = (response.data as any).access_token;
     // Set expiry to 5 minutes before actual expiry for safety
-    tokenExpiry = Date.now() + (response.data.expires_in - 300) * 1000;
+    tokenExpiry = Date.now() + ((response.data as any).expires_in - 300) * 1000;
 
     console.log('✅ BC access token acquired');
     return accessToken as string;
@@ -83,7 +83,7 @@ router.get('/projects', async (req: Request, res: Response) => {
       }
     });
 
-    const projects = response.data.value || [];
+    const projects = (response.data as any).value || [];
     const projectNumbers = projects.map((job: any) => job.No).filter((no: string) => no && no.trim());
     
     res.json({ projects: projectNumbers });
@@ -126,7 +126,7 @@ router.get('/ledger-entries', async (req: Request, res: Response) => {
       }
     });
 
-    const entries = response.data.value || [];
+    const entries = (response.data as any).value || [];
     
     res.json({ entries, count: entries.length });
   } catch (error: any) {
