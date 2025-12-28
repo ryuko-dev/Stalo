@@ -612,7 +612,13 @@ export default function Home({ selectedDate }: HomeProps) {
     }, {} as Record<string, typeof filteredResources>);
     
     // Sort departments alphabetically and return as an array of [department, resources] tuples
-    return Object.entries(grouped).sort((a, b) => a[0].localeCompare(b[0]));
+    // Also sort resources within each department by name alphabetically
+    return Object.entries(grouped)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([department, resources]) => [
+        department,
+        resources.sort((a, b) => a.Name.localeCompare(b.Name))
+      ]) as [string, typeof filteredResources][];
   }, [filteredResources]);
 
   // Filter unallocated positions and group by month - memoized
