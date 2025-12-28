@@ -1031,9 +1031,10 @@ export default function Home({ selectedDate }: HomeProps) {
                 </TableCell>
               ))}
             </TableRow>
-            
+          </TableHead>
+          <TableBody>
             {/* Unallocated positions row */}
-            <TableRow sx={{ position: 'sticky', top: 0, zIndex: 2 }}>
+            <TableRow>
               <TableCell sx={{ 
                 width: '200px', 
                 minWidth: '200px',
@@ -1043,7 +1044,7 @@ export default function Home({ selectedDate }: HomeProps) {
                 fontSize: '0.75rem',
                 position: 'sticky',
                 left: 0,
-                zIndex: 3,
+                zIndex: 1,
                 backgroundColor: '#f9fafb'
               }}>
                 Unallocated
@@ -1071,8 +1072,7 @@ export default function Home({ selectedDate }: HomeProps) {
                 </TableCell>
               ))}
             </TableRow>
-          </TableHead>
-          <TableBody>
+            
             {resourcesByDepartment.map(([department, departmentResources]) => (
               <React.Fragment key={department}>
                 {/* Department header row */}
@@ -1610,13 +1610,11 @@ export default function Home({ selectedDate }: HomeProps) {
             </Tooltip>
           </Box>
         </DialogTitle>
-        <DialogContent sx={{ p: 0 }}>
-          <Box sx={{ maxHeight: '70vh', overflow: 'auto' }}>
-            <TableContainer component={Paper}>
-              <Table size="small" sx={{ '& .MuiTableCell-root': { py: 0, px: 0 }, '& .MuiTableRow-root': { height: 'auto' } }}>
-                <TableHead>
-                  <TableRow>
-                    <TableCell sx={{ width: '150px', minWidth: '150px', py: 0, px: 0 }}><strong>Resource</strong></TableCell>
+        <DialogContent sx={{ p: 0, maxHeight: '70vh', overflow: 'auto' }}>
+          <Table size="small" sx={{ '& .MuiTableCell-root': { py: 0, px: 0 }, '& .MuiTableRow-root': { height: 'auto' } }}>
+            <TableHead sx={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#f8f9fa', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+              <TableRow>
+                <TableCell sx={{ width: '150px', minWidth: '150px', py: 1, px: 1, backgroundColor: '#f8f9fa', fontSize: '0.75rem', fontWeight: 600 }}>Resource</TableCell>
                     {(() => {
                       // Get unique projects for this month
                       const month = months[monthlyAllocationDialog.monthIndex];
@@ -1637,12 +1635,12 @@ export default function Home({ selectedDate }: HomeProps) {
                       )];
                       
                       return monthProjects.map((project, idx) => (
-                        <TableCell key={idx} align="center" sx={{ width: '120px', minWidth: '120px', py: 0, px: 0 }}>
-                          <strong>{project}</strong>
+                        <TableCell key={idx} align="center" sx={{ width: '100px', minWidth: '100px', py: 1, px: 0.5, backgroundColor: '#f8f9fa', fontSize: '0.75rem', fontWeight: 600 }}>
+                          {project}
                         </TableCell>
                       ));
                     })()}
-                    <TableCell align="center" sx={{ width: '100px', minWidth: '100px', py: 0, px: 0 }}><strong>Total</strong></TableCell>
+                    <TableCell align="center" sx={{ width: '100px', minWidth: '100px', py: 1, px: 0.5, backgroundColor: '#f8f9fa', fontSize: '0.75rem', fontWeight: 600 }}>Total</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -1653,11 +1651,12 @@ export default function Home({ selectedDate }: HomeProps) {
                         <TableCell 
                           colSpan={20} 
                           sx={{ 
-                            backgroundColor: 'grey.100', 
-                            fontWeight: 'bold',
-                            fontSize: '0.9rem',
-                            py: 0,
-                            px: 0
+                            backgroundColor: '#e9ecef', 
+                            fontWeight: 600,
+                            fontSize: '0.7rem',
+                            py: 0.5,
+                            px: 1,
+                            color: '#495057'
                           }}
                         >
                           {department}
@@ -1696,8 +1695,8 @@ export default function Home({ selectedDate }: HomeProps) {
                         const totalLoE = resourceAllocations.reduce((sum, a) => sum + a.LoE, 0);
                         
                         return (
-                          <TableRow key={resource.ID} hover>
-                            <TableCell component="th" scope="row" sx={{ pl: 3, py: 0, px: 0 }}>
+                          <TableRow key={resource.ID} hover sx={{ '&:hover': { backgroundColor: '#f8f9fa' } }}>
+                            <TableCell component="th" scope="row" sx={{ pl: 2, py: 0.5, px: 1, fontSize: '0.75rem' }}>
                               {resource.Name}
                             </TableCell>
                             {monthProjects.map((project) => {
@@ -1706,15 +1705,17 @@ export default function Home({ selectedDate }: HomeProps) {
                                 return a.ProjectName === project;
                               });
                               return (
-                                <TableCell key={project} align="center" sx={{ p: 0.5, py: 0, px: 0 }}>
+                                <TableCell key={project} align="center" sx={{ p: 0.25, py: 0.5 }}>
                                   {allocation ? (
                                     <Box sx={{ 
-                                      backgroundColor: '#1976d2', // professional blue
+                                      backgroundColor: '#1976d2',
                                       color: 'white',
-                                      p: 0.5, 
-                                      borderRadius: 0.5,
-                                      fontSize: '0.7rem',
-                                      fontWeight: 'bold'
+                                      px: 0.75,
+                                      py: 0.25,
+                                      borderRadius: 1,
+                                      fontSize: '0.65rem',
+                                      fontWeight: 600,
+                                      display: 'inline-block'
                                     }}>
                                       {(() => {
                                 // All allocations are stored as percentages in the database
@@ -1735,7 +1736,7 @@ export default function Home({ selectedDate }: HomeProps) {
                                 </TableCell>
                               );
                             })}
-                            <TableCell align="center" sx={{ p: 0.5, py: 0, px: 0, width: '120px', minWidth: '120px' }}>
+                            <TableCell align="center" sx={{ p: 0.25, py: 0.5, width: '100px', minWidth: '100px' }}>
                               {totalLoE > 0 ? (
                                 <Box sx={{ position: 'relative', width: '100%' }}>
                                   <LinearProgress 
@@ -1802,8 +1803,6 @@ export default function Home({ selectedDate }: HomeProps) {
                   ))}
                 </TableBody>
               </Table>
-            </TableContainer>
-          </Box>
         </DialogContent>
       </Dialog>
       
