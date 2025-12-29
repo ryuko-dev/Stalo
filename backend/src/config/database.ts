@@ -1,6 +1,6 @@
 import sql from 'mssql';
 
-const config: sql.config = {
+const getConfig = (): sql.config => ({
   server: process.env.DB_SERVER || '',
   database: process.env.DB_DATABASE || '',
   user: process.env.DB_USER || '',
@@ -17,7 +17,7 @@ const config: sql.config = {
     idleTimeoutMillis: 30000,
   },
   connectionTimeout: 60000,
-};
+});
 
 let pool: sql.ConnectionPool | null = null;
 
@@ -25,6 +25,8 @@ export async function getConnection(): Promise<sql.ConnectionPool> {
   try {
     if (!pool || pool.connected === false) {
       console.log('Establishing new database connection...');
+      const config = getConfig();
+      console.log(`Connecting to database server: ${config.server}`);
       pool = await sql.connect(config);
       console.log('Database connection established successfully');
     }
@@ -37,7 +39,7 @@ export async function getConnection(): Promise<sql.ConnectionPool> {
 }
 
 export function getDbConfig(): sql.config {
-  return config;
+  return getConfig();
 }
 
 export { sql };

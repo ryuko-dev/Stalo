@@ -229,22 +229,46 @@ router.post('/validate-positions', async (req, res) => {
       return res.status(400).json({ error: 'monthYears array is required' });
     }
 
+    // Validate and sanitize monthYears - should be in YYYY-MM format
+    const monthYearRegex = /^\d{4}-\d{2}$/;
+    const sanitizedMonths = monthYears
+      .map((m: string) => String(m).substring(0, 7))
+      .filter((m: string) => monthYearRegex.test(m));
+    
+    if (sanitizedMonths.length === 0) {
+      return res.status(400).json({ error: 'No valid monthYears provided' });
+    }
+
     const pool = await getConnection();
     
+    // Build parameterized query for positions
+    const posRequest = pool.request();
+    const posParams = sanitizedMonths.map((m, i) => {
+      posRequest.input(`month${i}`, sql.VarChar(7), m);
+      return `@month${i}`;
+    });
+    
     // Get all positions for the given months
-    const positionsResult = await pool.request().query(`
+    const positionsResult = await posRequest.query(`
       SELECT p.ID, p.Project, p.PositionName, p.MonthYear, p.Allocated, p.LoE, p.AllocationMode, pr.Name as ProjectName
       FROM dbo.Positions p
       LEFT JOIN dbo.Projects pr ON p.Project = pr.ID
-      WHERE CONVERT(VARCHAR(7), p.MonthYear, 120) IN (${monthYears.map((m: string) => `'${m.substring(0, 7)}'`).join(',')})
+      WHERE CONVERT(VARCHAR(7), p.MonthYear, 120) IN (${posParams.join(',')})
     `);
     
+    // Build parameterized query for allocations
+    const allocRequest = pool.request();
+    const allocParams = sanitizedMonths.map((m, i) => {
+      allocRequest.input(`month${i}`, sql.VarChar(7), m);
+      return `@month${i}`;
+    });
+    
     // Get all allocations for the given months with project info
-    const allocationsResult = await pool.request().query(`
+    const allocationsResult = await allocRequest.query(`
       SELECT a.ID, a.PositionID, a.ResourceID, a.ProjectID, a.MonthYear, pr.Name as ProjectName
       FROM dbo.Allocation a
       LEFT JOIN dbo.Projects pr ON a.ProjectID = pr.ID
-      WHERE CONVERT(VARCHAR(7), a.MonthYear, 120) IN (${monthYears.map((m: string) => `'${m.substring(0, 7)}'`).join(',')})
+      WHERE CONVERT(VARCHAR(7), a.MonthYear, 120) IN (${allocParams.join(',')})
     `);
     
     const positions = positionsResult.recordset;
@@ -371,30 +395,46 @@ router.post('/validate-positions', async (req, res) => {
       }
     }
     
-    // Execute batch operations
+    // Execute batch operations using parameterized queries
     // 1. Batch delete allocations
     if (allocationsToDelete.length > 0) {
-      await pool.request().query(`
+      // Use parameterized IN clause for safety
+      const deleteRequest = pool.request();
+      const deleteParams = allocationsToDelete.map((id, i) => {
+        deleteRequest.input(`delId${i}`, sql.UniqueIdentifier, id);
+        return `@delId${i}`;
+      });
+      await deleteRequest.query(`
         DELETE FROM dbo.Allocation 
-        WHERE ID IN ('${allocationsToDelete.join("','")}')
+        WHERE ID IN (${deleteParams.join(',')})
       `);
     }
     
     // 2. Batch update positions to 'Yes'
     if (positionsToSetYes.length > 0) {
-      await pool.request().query(`
+      const yesRequest = pool.request();
+      const yesParams = positionsToSetYes.map((id, i) => {
+        yesRequest.input(`yesId${i}`, sql.UniqueIdentifier, id);
+        return `@yesId${i}`;
+      });
+      await yesRequest.query(`
         UPDATE dbo.Positions 
         SET Allocated = 'Yes' 
-        WHERE ID IN ('${positionsToSetYes.join("','")}')
+        WHERE ID IN (${yesParams.join(',')})
       `);
     }
     
     // 3. Batch update positions to 'No'
     if (positionsToSetNo.length > 0) {
-      await pool.request().query(`
+      const noRequest = pool.request();
+      const noParams = positionsToSetNo.map((id, i) => {
+        noRequest.input(`noId${i}`, sql.UniqueIdentifier, id);
+        return `@noId${i}`;
+      });
+      await noRequest.query(`
         UPDATE dbo.Positions 
         SET Allocated = 'No' 
-        WHERE ID IN ('${positionsToSetNo.join("','")}')
+        WHERE ID IN (${noParams.join(',')})
       `);
     }
     
