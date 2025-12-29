@@ -56,7 +56,6 @@ export default function Glidepath() {
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const [isLoadingTasks, setIsLoadingTasks] = useState(false);
   const [isLoadingVersions, setIsLoadingVersions] = useState(false);
-  const [isLoadingBudgetData, setIsLoadingBudgetData] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
@@ -174,7 +173,6 @@ export default function Glidepath() {
   };
 
   const fetchBudgetData = async (versionId: number) => {
-    setIsLoadingBudgetData(true);
     try {
       const response = await fetch(`http://localhost:3001/api/budget/data/${versionId}`);
       const data = await response.json();
@@ -201,8 +199,6 @@ export default function Glidepath() {
     } catch (err: any) {
       console.error('Failed to fetch budget data:', err);
       setError(err.message);
-    } finally {
-      setIsLoadingBudgetData(false);
     }
   };
 
