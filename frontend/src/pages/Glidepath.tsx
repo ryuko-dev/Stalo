@@ -1,10 +1,9 @@
-import { Box, Typography, Card, CardContent, Autocomplete, TextField, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, CircularProgress, Chip, Button, MenuItem, Select, FormControl, InputLabel, IconButton, Snackbar, Alert } from '@mui/material';
+import { Box, Typography, Card, CardContent, Autocomplete, TextField, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, CircularProgress, Button, MenuItem, Select, FormControl, InputLabel, Snackbar, Alert } from '@mui/material';
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { format, eachMonthOfInterval, parseISO } from 'date-fns';
 import DownloadIcon from '@mui/icons-material/Download';
 import UploadIcon from '@mui/icons-material/Upload';
-import SaveIcon from '@mui/icons-material/Save';
 import AddIcon from '@mui/icons-material/Add';
 import SaveBudgetDialog from '../components/SaveBudgetDialog';
 
@@ -219,18 +218,6 @@ export default function Glidepath() {
     return value;
   };
 
-  // Handle cell value change
-  const handleCellChange = (taskNo: string, month: Date, value: string) => {
-    const numValue = parseFloat(value) || 0;
-    const key = getCellKey(taskNo, month);
-    
-    setPendingChanges(prev => {
-      const newChanges = new Map(prev);
-      newChanges.set(key, numValue);
-      return newChanges;
-    });
-  };
-
   const handleSaveBudget = async (saveAsNew: boolean, versionName?: string, description?: string) => {
     if (!selectedProject || !userEmail) {
       return;
@@ -346,13 +333,6 @@ export default function Glidepath() {
 
   const handleCreateNewVersion = () => {
     if (!selectedProject) return;
-    
-    setSaveDialogMode('edit');
-    setSaveDialogOpen(true);
-  };
-
-  const handleSaveChanges = () => {
-    if (pendingChanges.size === 0) return;
     
     setSaveDialogMode('edit');
     setSaveDialogOpen(true);
@@ -557,7 +537,7 @@ export default function Glidepath() {
         // Add budget values for each month
         monthColumns.forEach(month => {
           const value = getBudgetValue(task.Job_Task_No, month.date);
-          row.push(value || '');
+          row.push(value ? value.toString() : '');
         });
         return row;
       });

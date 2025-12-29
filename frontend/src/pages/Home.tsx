@@ -650,7 +650,7 @@ export default function Home({ selectedDate }: HomeProps) {
   // Excel Export Function for Monthly Allocation Dialog
   const exportMonthlyAllocationToExcel = async () => {
     // Dynamically import XLSX only when needed
-    const XLSX = await import('xlsx');
+    const XLSX = await import('xlsx-js-style');
     
     // Create workbook
     const wb = XLSX.utils.book_new();
@@ -749,7 +749,7 @@ export default function Home({ selectedDate }: HomeProps) {
   // Excel Export Function - dynamically loads XLSX to reduce initial bundle size
   const exportToExcel = async () => {
     // Dynamically import XLSX only when needed (~1MB library)
-    const XLSX = await import('xlsx');
+    const XLSX = await import('xlsx-js-style');
     
     // Create workbook
     const wb = XLSX.utils.book_new();
