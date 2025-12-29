@@ -1,0 +1,388 @@
+"use strict";
+/**
+ * Business Central API Proxy Routes
+ *
+ * Proxies requests to Business Central OData API with server-side OAuth2 authentication
+ */
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = __importDefault(require("express"));
+const axios_1 = __importDefault(require("axios"));
+const mssql_1 = __importDefault(require("mssql"));
+const database_1 = require("../config/database");
+const router = express_1.default.Router();
+// Business Central configuration from environment variables
+const BC_BASE_URL = process.env.BC_BASE_URL ||
+    'https://api.businesscentral.dynamics.com/v2.0/9f4e2976-b07e-4f8f-9c78-055f6c855a11/Production/ODataV4/Company(\'ARK%20Group%20Live\')';
+const BC_CLIENT_ID = process.env.BC_CLIENT_ID || '';
+const BC_CLIENT_SECRET = process.env.BC_CLIENT_SECRET || '';
+const BC_TENANT_ID = process.env.BC_TENANT_ID || '9f4e2976-b07e-4f8f-9c78-055f6c855a11';
+// Token cache
+let accessToken = null;
+let tokenExpiry = 0;
+/**
+ * Get OAuth2 access token for Business Central
+ */
+async function getAccessToken() {
+    // Return cached token if still valid
+    if (accessToken && Date.now() < tokenExpiry) {
+        return accessToken;
+    }
+    try {
+        const tokenUrl = `https://login.microsoftonline.com/${BC_TENANT_ID}/oauth2/v2.0/token`;
+        const params = new URLSearchParams({
+            client_id: BC_CLIENT_ID,
+            client_secret: BC_CLIENT_SECRET,
+            scope: 'https://api.businesscentral.dynamics.com/.default',
+            grant_type: 'client_credentials',
+        });
+        const response = await axios_1.default.post(tokenUrl, params.toString(), {
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        });
+        accessToken = response.data.access_token;
+        // Set expiry to 5 minutes before actual expiry for safety
+        tokenExpiry = Date.now() + (response.data.expires_in - 300) * 1000;
+        console.log('✅ BC access token acquired');
+        return accessToken;
+    }
+    catch (error) {
+        console.error('❌ Failed to get BC access token:', error.response?.data || error.message);
+        throw new Error('Failed to authenticate with Business Central');
+    }
+}
+/**
+ * Create axios instance with OAuth2 authentication
+ */
+async function createBCClient() {
+    const token = await getAccessToken();
+    return axios_1.default.create({
+        baseURL: BC_BASE_URL,
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+        },
+        timeout: 30000,
+    });
+}
+/**
+ * GET /api/bc/projects
+ * Fetch project list from Job_List
+ */
+router.get('/projects', async (req, res) => {
+    try {
+        const bcClient = await createBCClient();
+        const response = await bcClient.get('/Job_List', {
+            params: {
+                $select: 'No,Description,Bill_to_Customer_No,Status,Person_Responsible,Search_Description,Project_Manager'
+            }
+        });
+        const projects = response.data.value || [];
+        const projectNumbers = projects.map((job) => job.No).filter((no) => no && no.trim());
+        res.json({ projects: projectNumbers });
+    }
+    catch (error) {
+        console.error('Error fetching projects from BC:', error.response?.data || error.message);
+        res.status(error.response?.status || 500).json({
+            error: 'Failed to fetch projects',
+            details: error.response?.data || error.message
+        });
+    }
+});
+/**
+ * GET /api/bc/ledger-entries
+ * Fetch project ledger entries with filters
+ * Query params: project, startDate, endDate
+ */
+router.get('/ledger-entries', async (req, res) => {
+    try {
+        const { project, startDate, endDate, versionId } = req.query;
+        if (!project) {
+            return res.status(400).json({ error: 'Project parameter is required' });
+        }
+        // Build OData filter
+        let filter = `Donor_Project_No eq '${project}'`;
+        if (startDate) {
+            filter += ` and Posting_Date ge ${startDate}`;
+        }
+        if (endDate) {
+            filter += ` and Posting_Date le ${endDate}`;
+        }
+        const bcClient = await createBCClient();
+        // Fetch from Project_Ledger_Entries_Excel
+        const response = await bcClient.get('/Project_Ledger_Entries_Excel', {
+            params: {
+                $filter: filter
+            }
+        });
+        const entries = response.data.value || [];
+        // Get unique document numbers to fetch document dates and external document numbers
+        const documentNos = [...new Set(entries.map((entry) => entry.Document_No))];
+        // Fetch document dates from JobLedgerEntries in batches
+        const documentDateMap = {};
+        // Fetch external document numbers from General_Ledger_Entries_Excel in batches
+        const externalDocumentMap = {};
+        if (documentNos.length > 0) {
+            try {
+                // Build filter for document numbers (OData has URL length limits, so batch if needed)
+                const batchSize = 50;
+                for (let i = 0; i < documentNos.length; i += batchSize) {
+                    const batch = documentNos.slice(i, i + batchSize);
+                    const docFilter = batch.map(docNo => `Document_No eq '${docNo}'`).join(' or ');
+                    const jobLedgerResponse = await bcClient.get('/JobLedgerEntries', {
+                        params: {
+                            $filter: docFilter,
+                            $select: 'Document_No,Document_Date'
+                        }
+                    });
+                    const jobLedgerEntries = jobLedgerResponse.data.value || [];
+                    jobLedgerEntries.forEach((entry) => {
+                        if (!documentDateMap[entry.Document_No]) {
+                            documentDateMap[entry.Document_No] = entry.Document_Date;
+                        }
+                    });
+                }
+            }
+            catch (docError) {
+                console.error('Error fetching document dates from JobLedgerEntries:', docError);
+                // Continue without document dates if there's an error
+            }
+            try {
+                // Fetch external document numbers from General_Ledger_Entries_Excel
+                const batchSize = 50;
+                for (let i = 0; i < documentNos.length; i += batchSize) {
+                    const batch = documentNos.slice(i, i + batchSize);
+                    const docFilter = batch.map(docNo => `Document_No eq '${docNo}'`).join(' or ');
+                    const generalLedgerResponse = await bcClient.get('/General_Ledger_Entries_Excel', {
+                        params: {
+                            $filter: docFilter,
+                            $select: 'Document_No,External_Document_No'
+                        }
+                    });
+                    const generalLedgerEntries = generalLedgerResponse.data.value || [];
+                    generalLedgerEntries.forEach((entry) => {
+                        if (!externalDocumentMap[entry.Document_No]) {
+                            externalDocumentMap[entry.Document_No] = entry.External_Document_No;
+                        }
+                    });
+                }
+            }
+            catch (extDocError) {
+                console.error('Error fetching external document numbers from General_Ledger_Entries_Excel:', extDocError);
+                // Continue without external document numbers if there's an error
+            }
+        }
+        // Fetch Job Task Lines for the project to get task descriptions and hierarchy
+        const jobTaskMap = {};
+        const jobTaskHierarchy = [];
+        try {
+            const jobTaskResponse = await bcClient.get('/Job_Task_Lines', {
+                params: {
+                    $filter: `Job_No eq '${project}'`,
+                    $select: 'Job_No,Job_Task_No,Description,Job_Task_Type'
+                }
+            });
+            const jobTasks = jobTaskResponse.data.value || [];
+            // Build job task map for quick lookup
+            jobTasks.forEach((task) => {
+                const key = `${task.Job_No}|${task.Job_Task_No}`;
+                jobTaskMap[key] = {
+                    Job_Task_No: task.Job_Task_No,
+                    Description: task.Description || ''
+                };
+            });
+            // Build hierarchy structure
+            // Task_Type: Total = grouping level, Posting = transaction level
+            const totalTasks = jobTasks.filter((t) => t.Job_Task_Type === 'Total');
+            const postingTasks = jobTasks.filter((t) => t.Job_Task_Type === 'Posting');
+            // Group posting tasks under their parent totals
+            postingTasks.forEach((posting) => {
+                const taskNo = posting.Job_Task_No;
+                const parts = taskNo.split('.');
+                let level1Task = null;
+                let level2Task = null;
+                // Find parent Total tasks
+                for (const total of totalTasks) {
+                    const totalParts = total.Job_Task_No.split('.');
+                    // Check if this posting task is under this total
+                    if (taskNo.startsWith(total.Job_Task_No + '.') ||
+                        (parts.length === totalParts.length + 1 && taskNo.startsWith(total.Job_Task_No.split('.')[0]))) {
+                        if (totalParts.length === 1) {
+                            level1Task = total;
+                        }
+                        else if (totalParts.length === 2) {
+                            level2Task = total;
+                        }
+                    }
+                }
+                // For 2-level hierarchy (e.g., 02 -> 02.01 where 02.01 is Posting)
+                if (!level1Task && parts.length === 2) {
+                    // Find the parent total with just the first part
+                    level1Task = totalTasks.find((t) => t.Job_Task_No === parts[0]);
+                }
+                // For 3-level hierarchy (e.g., 02 -> 02.01 -> 02.01.01)
+                if (parts.length === 3) {
+                    level1Task = totalTasks.find((t) => t.Job_Task_No === parts[0]);
+                    level2Task = totalTasks.find((t) => t.Job_Task_No === `${parts[0]}.${parts[1]}`);
+                }
+                jobTaskHierarchy.push({
+                    Job_Task_No: posting.Job_Task_No,
+                    Description: posting.Description || '',
+                    Level1_Job_Task_No: level1Task?.Job_Task_No || '',
+                    Level1_Description: level1Task?.Description || '',
+                    Level2_Job_Task_No: level2Task?.Job_Task_No || '',
+                    Level2_Description: level2Task?.Description || '',
+                    Has_Middle_Level: !!level2Task
+                });
+            });
+            console.log(`✅ Fetched ${jobTasks.length} job task lines for project ${project}`);
+            console.log(`✅ Built hierarchy with ${jobTaskHierarchy.length} posting tasks`);
+        }
+        catch (jobTaskError) {
+            console.error('Error fetching job task lines:', jobTaskError);
+            // Continue without job task descriptions if there's an error
+        }
+        // Merge document dates, external document numbers, and job task descriptions into entries
+        const enrichedEntries = entries.map((entry) => {
+            const taskHierarchy = jobTaskHierarchy.find(h => h.Job_Task_No === entry.Donor_Project_Task_No);
+            return {
+                ...entry,
+                Document_Date: documentDateMap[entry.Document_No] || null,
+                External_Document_No: externalDocumentMap[entry.Document_No] || null,
+                Job_Task_Description: taskHierarchy?.Description || '',
+                Level1_Job_Task_No: taskHierarchy?.Level1_Job_Task_No || '',
+                Level1_Description: taskHierarchy?.Level1_Description || '',
+                Level2_Job_Task_No: taskHierarchy?.Level2_Job_Task_No || '',
+                Level2_Description: taskHierarchy?.Level2_Description || '',
+                Has_Middle_Level: taskHierarchy?.Has_Middle_Level || false
+            };
+        });
+        // Fetch budget data from BudgetData table for the project and date range
+        // Use provided versionId, or fall back to baseline version (Is_Baseline = 1)
+        const budgetMap = {};
+        let usedVersionId = null;
+        try {
+            const pool = await mssql_1.default.connect((0, database_1.getDbConfig)());
+            // If versionId is provided, use it directly; otherwise find the baseline version
+            if (versionId) {
+                usedVersionId = parseInt(versionId, 10);
+                console.log(`📊 Using provided version ID: ${usedVersionId}`);
+            }
+            else {
+                // Get the baseline version for this project
+                const versionResult = await pool.request()
+                    .input('jobNo', mssql_1.default.NVarChar(20), project)
+                    .query(`
+            SELECT Version_ID 
+            FROM BudgetVersions 
+            WHERE Job_No = @jobNo AND Is_Baseline = 1
+          `);
+                if (versionResult.recordset.length > 0) {
+                    usedVersionId = versionResult.recordset[0].Version_ID;
+                    console.log(`📊 Using baseline version ID: ${usedVersionId}`);
+                }
+                else {
+                    console.log(`⚠️ No baseline version found for project ${project}`);
+                }
+            }
+            if (usedVersionId !== null) {
+                // Build date filter for budget months
+                let budgetFilter = 'bd.Job_No = @jobNo AND bd.Version_ID = @versionId';
+                if (startDate && endDate) {
+                    budgetFilter += ' AND bd.Budget_Month >= @startDate AND bd.Budget_Month <= @endDate';
+                }
+                const budgetResult = await pool.request()
+                    .input('jobNo', mssql_1.default.NVarChar(20), project)
+                    .input('versionId', mssql_1.default.Int, usedVersionId)
+                    .input('startDate', mssql_1.default.Date, startDate || null)
+                    .input('endDate', mssql_1.default.Date, endDate || null)
+                    .query(`
+            SELECT bd.Job_Task_No, SUM(bd.Budget_Amount) as Total_Budget
+            FROM BudgetData bd
+            WHERE ${budgetFilter}
+            GROUP BY bd.Job_Task_No
+          `);
+                // Create a map of Job_Task_No to Total_Budget
+                budgetResult.recordset.forEach((row) => {
+                    budgetMap[row.Job_Task_No] = row.Total_Budget;
+                });
+                console.log(`✅ Fetched budget data for ${budgetResult.recordset.length} tasks from version ID: ${usedVersionId}`);
+            }
+        }
+        catch (budgetError) {
+            console.error('Error fetching budget data:', budgetError);
+            // Continue without budget data if there's an error
+        }
+        // Add budget data to entries
+        const finalEntries = enrichedEntries.map((entry) => ({
+            ...entry,
+            Budget_Amount: budgetMap[entry.Donor_Project_Task_No] || 0
+        }));
+        // Add budget amounts to hierarchy
+        const hierarchyWithBudget = jobTaskHierarchy.map((task) => ({
+            ...task,
+            Budget_Amount: budgetMap[task.Job_Task_No] || 0
+        }));
+        res.json({
+            entries: finalEntries,
+            count: finalEntries.length,
+            jobTaskHierarchy: hierarchyWithBudget
+        });
+    }
+    catch (error) {
+        console.error('Error fetching ledger entries from BC:', error.response?.data || error.message);
+        res.status(error.response?.status || 500).json({
+            error: 'Failed to fetch ledger entries',
+            details: error.response?.data || error.message
+        });
+    }
+});
+/**
+ * GET /api/bc/project-cards
+ * Fetch project cards
+ */
+router.get('/project-cards', async (req, res) => {
+    try {
+        const bcClient = await createBCClient();
+        const response = await bcClient.get('/Project_Card_Excel');
+        const projectCards = response.data.value || [];
+        res.json({ projectCards, count: projectCards.length });
+    }
+    catch (error) {
+        console.error('Error fetching project cards from BC:', error.response?.data || error.message);
+        res.status(error.response?.status || 500).json({
+            error: 'Failed to fetch project cards',
+            details: error.response?.data || error.message
+        });
+    }
+});
+/**
+ * GET /api/bc/job-task-lines
+ * Fetch job task lines for a specific project
+ * Query params: jobNo
+ */
+router.get('/job-task-lines', async (req, res) => {
+    try {
+        const { jobNo } = req.query;
+        if (!jobNo) {
+            return res.status(400).json({ error: 'jobNo parameter is required' });
+        }
+        const bcClient = await createBCClient();
+        const response = await bcClient.get('/Job_Task_Lines', {
+            params: {
+                $filter: `Job_No eq '${jobNo}'`
+            }
+        });
+        const taskLines = response.data.value || [];
+        res.json({ taskLines, count: taskLines.length });
+    }
+    catch (error) {
+        console.error('Error fetching job task lines from BC:', error.response?.data || error.message);
+        res.status(error.response?.status || 500).json({
+            error: 'Failed to fetch job task lines',
+            details: error.response?.data || error.message
+        });
+    }
+});
+exports.default = router;
