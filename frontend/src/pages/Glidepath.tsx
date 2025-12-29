@@ -5,7 +5,9 @@ import { format, eachMonthOfInterval, parseISO } from 'date-fns';
 import DownloadIcon from '@mui/icons-material/Download';
 import UploadIcon from '@mui/icons-material/Upload';
 import AddIcon from '@mui/icons-material/Add';
+import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import SaveBudgetDialog from '../components/SaveBudgetDialog';
+import sharepointService from '../services/sharepointService';
 
 interface ProjectCard {
   No: string;
@@ -205,6 +207,36 @@ export default function Glidepath() {
   // Helper function to get cell key
   const getCellKey = (taskNo: string, month: Date): string => {
     return `${taskNo}|${format(month, 'yyyy-MM-dd')}`;
+  };
+
+  // Handle SharePoint folder creation/opening for budget versions
+  const handleOpenBudgetFolder = async () => {
+    if (!selectedProject || !selectedVersion) {
+      setSnackbar({ open: true, message: 'Please select a project and version first', severity: 'warning' });
+      return;
+    }
+
+    try {
+      // Folder name: ProjectNo_VersionName under Project_Budget_Version root
+      const result = await sharepointService.createOrOpenBudgetVersionFolder(
+        selectedProject.No,
+        selectedVersion.Version_Name
+      );
+
+      if (result.success && result.folderUrl) {
+        window.open(result.folderUrl, '_blank');
+        setSnackbar({ 
+          open: true, 
+          message: result.created ? 'Budget folder created and opened' : 'Budget folder opened', 
+          severity: 'success' 
+        });
+      } else {
+        setSnackbar({ open: true, message: result.error || 'Failed to access SharePoint folder', severity: 'error' });
+      }
+    } catch (error: any) {
+      console.error('Error opening budget folder:', error);
+      setSnackbar({ open: true, message: 'Failed to open folder: ' + error.message, severity: 'error' });
+    }
   };
 
   // Get budget value for a cell (pending changes override saved data)
@@ -718,6 +750,16 @@ export default function Glidepath() {
               </Box>
               
               <Box sx={{ display: 'flex', gap: 1 }}>
+                <Button
+                  variant="outlined"
+                  color="secondary"
+                  startIcon={<FolderOpenIcon />}
+                  size="small"
+                  onClick={handleOpenBudgetFolder}
+                  disabled={!selectedProject || !selectedVersion}
+                >
+                  Open Folder
+                </Button>
                 <Button
                   variant="outlined"
                   startIcon={<DownloadIcon />}

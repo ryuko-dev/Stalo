@@ -19,9 +19,11 @@ import {
   Edit as EditIcon, 
   Delete as DeleteIcon,
   Visibility as ViewIcon,
-  Add as AddIcon
+  Add as AddIcon,
+  FolderOpen as FolderIcon
 } from '@mui/icons-material';
 import scheduledService, { type ScheduledRecord, type CreateScheduledRecord, type UpdateScheduledRecord } from '../services/scheduledService';
+import sharepointService from '../services/sharepointService';
 import ScheduledRecordModal from '../components/ScheduledRecordModal';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
 import ScheduledRecordViewModal from '../components/ScheduledRecordViewModal';
@@ -190,6 +192,32 @@ export default function ScheduledRecords() {
     } catch (err) {
       console.error('Error deleting record:', err);
       throw err;
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Handle SharePoint folder creation/opening
+  const handleOpenFolder = async (record: ScheduledRecord) => {
+    setActionLoading(true);
+    try {
+      const result = await sharepointService.createOrOpenFolder(record.ScheduledID, record.Type);
+      
+      if (result.success && result.folderUrl) {
+        // Open folder in new tab
+        window.open(result.folderUrl, '_blank');
+        
+        // Log success
+        if (result.created) {
+          console.log(`✅ Created and opened folder for record ${record.ScheduledID}`);
+        } else {
+          console.log(`✅ Opened existing folder for record ${record.ScheduledID}`);
+        }
+      } else {
+        setError(result.error || 'Failed to access SharePoint folder');
+      }
+    } catch (err: any) {
+      setError('Failed to open folder: ' + (err.message || 'Unknown error'));
     } finally {
       setActionLoading(false);
     }
@@ -524,6 +552,17 @@ export default function ScheduledRecords() {
                           sx={{ padding: '4px' }}
                         >
                           <ViewIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Open SharePoint Folder">
+                        <IconButton 
+                          size="small" 
+                          color="secondary"
+                          onClick={() => handleOpenFolder(record)}
+                          disabled={actionLoading}
+                          sx={{ padding: '4px' }}
+                        >
+                          <FolderIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Edit">

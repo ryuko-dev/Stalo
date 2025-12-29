@@ -672,15 +672,18 @@ export default function Home({ selectedDate }: HomeProps) {
     
     // Prepare data for the monthly allocation sheet
     const allocationData: any[] = [];
+    const rowTypes: ('header' | 'department' | 'resource')[] = [];
     
     // Add header row
     const headers = ['Resource Name', 'Department', ...monthProjects, 'Total'];
     allocationData.push(headers);
+    rowTypes.push('header');
     
     // Add department and resource rows (resourcesByDepartment is now a sorted array)
     resourcesByDepartment.forEach(([department, deptResources]) => {
       // Add department header
       allocationData.push([department, '', ...Array(monthProjects.length + 1).fill('')]);
+      rowTypes.push('department');
       
       // Add resources in this department
       deptResources.forEach(resource => {
@@ -726,21 +729,80 @@ export default function Home({ selectedDate }: HomeProps) {
         }
         
         allocationData.push(resourceRow);
+        rowTypes.push('resource');
       });
     });
     
     // Create worksheet
     const ws = XLSX.utils.aoa_to_sheet(allocationData);
     
+    // Define styles matching Report page
+    const styleColors = {
+      header: { fill: '005272', font: 'FFFFFF', bold: true },      // Blue header with white text
+      department: { fill: 'ADD8E6', font: '000000', bold: true },  // Light blue for departments
+      resource: { fill: 'FFFFFF', font: '000000', bold: false }    // White for resources
+    };
+    
+    // Apply styles to all cells
+    const colCount = 2 + monthProjects.length + 1; // Resource Name + Department + projects + Total
+    allocationData.forEach((_, rowIdx) => {
+      const rowType = rowTypes[rowIdx];
+      const style = styleColors[rowType];
+      
+      for (let colIdx = 0; colIdx < colCount; colIdx++) {
+        const cellRef = XLSX.utils.encode_cell({ r: rowIdx, c: colIdx });
+        if (!ws[cellRef]) {
+          ws[cellRef] = { v: '', t: 's' };
+        }
+        
+        // Determine alignment
+        let horizontalAlign = 'left';
+        if (rowType === 'header' || colIdx >= 2) {
+          horizontalAlign = 'center'; // Header and project columns centered
+        }
+        
+        ws[cellRef].s = {
+          fill: {
+            patternType: 'solid',
+            fgColor: { rgb: style.fill }
+          },
+          font: {
+            name: 'Arial',
+            sz: 8,
+            bold: style.bold,
+            color: { rgb: style.font }
+          },
+          border: {
+            top: { style: 'thin', color: { rgb: 'CCCCCC' } },
+            bottom: { style: 'thin', color: { rgb: 'CCCCCC' } },
+            left: { style: 'thin', color: { rgb: 'CCCCCC' } },
+            right: { style: 'thin', color: { rgb: 'CCCCCC' } }
+          },
+          alignment: {
+            horizontal: horizontalAlign,
+            vertical: 'center',
+            wrapText: false
+          }
+        };
+      }
+    });
+    
     // Set column widths
-    const colWidths = [20, 15, ...Array(monthProjects.length).fill(15), 10];
-    ws['!cols'] = colWidths.map(w => ({ width: w }));
+    ws['!cols'] = [
+      { wch: 25 }, // Resource Name
+      { wch: 20 }, // Department
+      ...Array(monthProjects.length).fill({ wch: 18 }), // Projects
+      { wch: 12 }  // Total
+    ];
+    
+    // Set row heights
+    ws['!rows'] = allocationData.map(() => ({ hpx: 25 }));
     
     // Add worksheet to workbook
     XLSX.utils.book_append_sheet(wb, ws, `Monthly Allocation ${format(month, 'MMM yyyy')}`);
     
-    // Generate Excel file and download
-    const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    // Generate Excel file with styles and download
+    const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array', cellStyles: true });
     const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const fileName = `Monthly_Allocation_${format(month, 'yyyy-MM')}_${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
     saveAs(data, fileName);
@@ -756,10 +818,12 @@ export default function Home({ selectedDate }: HomeProps) {
     
     // Prepare data for the main allocation sheet
     const allocationData: any[] = [];
+    const rowTypes: ('header' | 'unallocated' | 'department' | 'resource')[] = [];
     
     // Add header row
     const headers = ['Resource Name', 'Department', ...months.map(m => format(m, 'MMM yyyy'))];
     allocationData.push(headers);
+    rowTypes.push('header');
     
     // Add unallocated positions row
     const unallocatedRow = ['Unallocated', ''];
@@ -774,11 +838,13 @@ export default function Home({ selectedDate }: HomeProps) {
       }
     });
     allocationData.push(unallocatedRow);
+    rowTypes.push('unallocated');
     
     // Add department and resource rows (already sorted)
     resourcesByDepartment.forEach(([department, deptResources]) => {
       // Add department header
       allocationData.push([department, '', ...Array(months.length).fill('')]);
+      rowTypes.push('department');
       
       // Add resources in this department
       deptResources.forEach(resource => {
@@ -820,20 +886,79 @@ export default function Home({ selectedDate }: HomeProps) {
         });
         
         allocationData.push(resourceRow);
+        rowTypes.push('resource');
       });
     });
     
     // Create worksheet
     const ws = XLSX.utils.aoa_to_sheet(allocationData);
     
+    // Define styles matching Report page
+    const styleColors = {
+      header: { fill: '005272', font: 'FFFFFF', bold: true },      // Blue header with white text
+      unallocated: { fill: 'FFE4E1', font: '000000', bold: true }, // Light red/pink for unallocated
+      department: { fill: 'ADD8E6', font: '000000', bold: true },  // Light blue for departments
+      resource: { fill: 'FFFFFF', font: '000000', bold: false }    // White for resources
+    };
+    
+    // Apply styles to all cells
+    const colCount = 2 + months.length; // Resource Name + Department + months
+    allocationData.forEach((_, rowIdx) => {
+      const rowType = rowTypes[rowIdx];
+      const style = styleColors[rowType];
+      
+      for (let colIdx = 0; colIdx < colCount; colIdx++) {
+        const cellRef = XLSX.utils.encode_cell({ r: rowIdx, c: colIdx });
+        if (!ws[cellRef]) {
+          ws[cellRef] = { v: '', t: 's' };
+        }
+        
+        // Determine alignment
+        let horizontalAlign = 'left';
+        if (rowType === 'header' || colIdx >= 2) {
+          horizontalAlign = 'center'; // Header and month columns centered
+        }
+        
+        ws[cellRef].s = {
+          fill: {
+            patternType: 'solid',
+            fgColor: { rgb: style.fill }
+          },
+          font: {
+            name: 'Arial',
+            sz: 8,
+            bold: style.bold,
+            color: { rgb: style.font }
+          },
+          border: {
+            top: { style: 'thin', color: { rgb: 'CCCCCC' } },
+            bottom: { style: 'thin', color: { rgb: 'CCCCCC' } },
+            left: { style: 'thin', color: { rgb: 'CCCCCC' } },
+            right: { style: 'thin', color: { rgb: 'CCCCCC' } }
+          },
+          alignment: {
+            horizontal: horizontalAlign,
+            vertical: 'center',
+            wrapText: true
+          }
+        };
+      }
+    });
+    
     // Set column widths
-    const colWidths = [20, 15, ...Array(months.length).fill(25)];
-    ws['!cols'] = colWidths.map(w => ({ width: w }));
+    ws['!cols'] = [
+      { wch: 25 }, // Resource Name
+      { wch: 20 }, // Department
+      ...Array(months.length).fill({ wch: 30 }) // Months
+    ];
+    
+    // Set row heights
+    ws['!rows'] = allocationData.map(() => ({ hpx: 25 }));
     
     // Add worksheet to workbook
     XLSX.utils.book_append_sheet(wb, ws, 'Resource Allocation');
     
-    // Create a separate sheet for unallocated positions details
+    // Create a separate sheet for unallocated positions details with styling
     const unallocatedData: any[] = [['Project Name', 'Position Name', 'Month', 'LoE', 'Allocation Mode']];
     
     unallocatedPositionsByMonth.forEach((monthPositions, monthIndex) => {
@@ -850,12 +975,59 @@ export default function Home({ selectedDate }: HomeProps) {
     
     if (unallocatedData.length > 1) {
       const unallocatedWs = XLSX.utils.aoa_to_sheet(unallocatedData);
-      unallocatedWs['!cols'] = [{ width: 20 }, { width: 25 }, { width: 15 }, { width: 10 }, { width: 15 }];
+      
+      // Apply styles to unallocated sheet
+      const unallocColCount = 5;
+      unallocatedData.forEach((_, rowIdx) => {
+        const isHeader = rowIdx === 0;
+        const style = isHeader ? styleColors.header : styleColors.resource;
+        
+        for (let colIdx = 0; colIdx < unallocColCount; colIdx++) {
+          const cellRef = XLSX.utils.encode_cell({ r: rowIdx, c: colIdx });
+          if (!unallocatedWs[cellRef]) {
+            unallocatedWs[cellRef] = { v: '', t: 's' };
+          }
+          
+          unallocatedWs[cellRef].s = {
+            fill: {
+              patternType: 'solid',
+              fgColor: { rgb: style.fill }
+            },
+            font: {
+              name: 'Arial',
+              sz: 8,
+              bold: style.bold,
+              color: { rgb: style.font }
+            },
+            border: {
+              top: { style: 'thin', color: { rgb: 'CCCCCC' } },
+              bottom: { style: 'thin', color: { rgb: 'CCCCCC' } },
+              left: { style: 'thin', color: { rgb: 'CCCCCC' } },
+              right: { style: 'thin', color: { rgb: 'CCCCCC' } }
+            },
+            alignment: {
+              horizontal: isHeader ? 'center' : 'left',
+              vertical: 'center',
+              wrapText: false
+            }
+          };
+        }
+      });
+      
+      unallocatedWs['!cols'] = [
+        { wch: 25 }, // Project Name
+        { wch: 30 }, // Position Name
+        { wch: 15 }, // Month
+        { wch: 10 }, // LoE
+        { wch: 18 }  // Allocation Mode
+      ];
+      unallocatedWs['!rows'] = unallocatedData.map(() => ({ hpx: 25 }));
+      
       XLSX.utils.book_append_sheet(wb, unallocatedWs, 'Unallocated Positions');
     }
     
-    // Generate Excel file and download
-    const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    // Generate Excel file with styles and download
+    const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array', cellStyles: true });
     const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const fileName = `Resource_Allocation_${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
     saveAs(data, fileName);

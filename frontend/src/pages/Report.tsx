@@ -1,9 +1,10 @@
-import { Box, Typography, Button, Card, CardContent, Chip, Tooltip, TextField, Alert, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, CircularProgress, Autocomplete, Menu, MenuItem } from '@mui/material';
-import { CloudSync as CloudSyncIcon, OpenInNew as OpenInNewIcon, FileDownload as FileDownloadIcon } from '@mui/icons-material';
+import { Box, Typography, Button, Card, CardContent, Chip, Tooltip, TextField, Alert, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, CircularProgress, Autocomplete, Menu, MenuItem, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
+import { CloudSync as CloudSyncIcon, OpenInNew as OpenInNewIcon, FileDownload as FileDownloadIcon, CalendarMonth as CalendarMonthIcon } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useState, useEffect, Fragment } from 'react';
 import * as XLSX from 'xlsx-js-style';
 import { saveAs } from 'file-saver';
+import { format, eachMonthOfInterval, parseISO, startOfMonth } from 'date-fns';
 
 interface ProjectLedgerEntry {
   Donor_Project_No: string;
@@ -75,6 +76,7 @@ export default function Report() {
   const [startDate, setStartDate] = useState<string>(new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [contextMenu, setContextMenu] = useState<{ mouseX: number; mouseY: number; documentNo: string } | null>(null);
+  const [abbDialogOpen, setAbbDialogOpen] = useState(false);
 
   // Fetch available projects on mount
   useEffect(() => {
@@ -505,6 +507,141 @@ export default function Report() {
     saveAs(blob, fileName);
   };
 
+  const exportAbbToExcel = () => {
+    if (Object.keys(groupedData).length === 0) return;
+
+    const { months, rows } = generateMonthlyBreakdown();
+    if (rows.length === 0) return;
+
+    const excelRows: any[][] = [];
+    const rowStyles: { level: 'header' | 'level1' | 'level2' | 'level3' | 'grandTotal' | 'title', row: number }[] = [];
+    const mergeRanges: { s: { r: number; c: number }; e: { r: number; c: number } }[] = [];
+    let currentRow = 0;
+    
+    // Title rows
+    excelRows.push([`${projectFilter} - Activity-Based Budget Monthly Breakdown`, ...Array(months.length).fill('')]);
+    mergeRanges.push({ s: { r: currentRow, c: 0 }, e: { r: currentRow, c: months.length + 1 } });
+    rowStyles.push({ level: 'title', row: currentRow++ });
+    
+    excelRows.push([`Report Period: ${format(parseISO(startDate), 'MMM dd, yyyy')} to ${format(parseISO(endDate), 'MMM dd, yyyy')}`, ...Array(months.length).fill('')]);
+    mergeRanges.push({ s: { r: currentRow, c: 0 }, e: { r: currentRow, c: months.length + 1 } });
+    rowStyles.push({ level: 'title', row: currentRow++ });
+    
+    excelRows.push(['', ...Array(months.length).fill('')]);
+    mergeRanges.push({ s: { r: currentRow, c: 0 }, e: { r: currentRow, c: months.length + 1 } });
+    currentRow++;
+    
+    // Header row
+    const headerRow = ['Description', ...months.map(m => format(m, 'MMM yy')), 'Total'];
+    excelRows.push(headerRow);
+    rowStyles.push({ level: 'header', row: currentRow++ });
+
+    // Data rows
+    rows.forEach(row => {
+      const total = row.monthlyAmounts.reduce((sum, amt) => sum + amt, 0);
+      const levelStyle = row.level === 'Top' ? 'level1' : row.level === 'Middle' ? 'level2' : 'level3';
+      
+      excelRows.push([
+        row.description,
+        ...row.monthlyAmounts,
+        total
+      ]);
+      rowStyles.push({ level: levelStyle as any, row: currentRow++ });
+    });
+
+    // Grand Total row (only sum detail level rows)
+    const grandTotals = months.map((_, monthIdx) => 
+      rows.filter(row => row.level === 'Detail').reduce((sum, row) => sum + row.monthlyAmounts[monthIdx], 0)
+    );
+    const overallTotal = grandTotals.reduce((sum, amt) => sum + amt, 0);
+    excelRows.push(['GRAND TOTAL', ...grandTotals, overallTotal]);
+    rowStyles.push({ level: 'grandTotal', row: currentRow++ });
+
+    // Create worksheet
+    const ws = XLSX.utils.aoa_to_sheet(excelRows);
+    ws['!merges'] = mergeRanges;
+
+    // Define styles
+    const styleColors: { [key: string]: { fill: string; font: string; bold: boolean } } = {
+      title: { fill: 'FFFFFF', font: '000000', bold: true },
+      header: { fill: '005272', font: 'FFFFFF', bold: true },
+      level1: { fill: 'ADD8E6', font: '000000', bold: true },
+      level2: { fill: 'ADD8E6', font: '000000', bold: true },
+      level3: { fill: 'E8F4F8', font: '000000', bold: false },
+      grandTotal: { fill: '0D47A1', font: 'FFFFFF', bold: true }
+    };
+
+    // Apply styles to cells
+    const colCount = months.length + 2; // Description + months + Total
+    rowStyles.forEach(({ level, row }) => {
+      const style = styleColors[level];
+      
+      for (let col = 0; col < colCount; col++) {
+        const cellRef = XLSX.utils.encode_cell({ r: row, c: col });
+        if (!ws[cellRef]) {
+          ws[cellRef] = { v: '', t: 's' };
+        }
+        
+        let horizontalAlign = 'left';
+        if (level === 'title') {
+          horizontalAlign = 'center';
+        } else if (col > 0) {
+          horizontalAlign = 'right'; // All amount columns right-aligned
+        }
+        
+        ws[cellRef].s = {
+          fill: {
+            patternType: 'solid',
+            fgColor: { rgb: style.fill }
+          },
+          font: {
+            name: 'Arial',
+            sz: 8,
+            bold: style.bold,
+            color: { rgb: style.font }
+          },
+          alignment: {
+            horizontal: horizontalAlign,
+            vertical: 'center'
+          }
+        };
+
+        // Format number cells with 2 decimals (all columns except Description)
+        if (col > 0 && level !== 'header' && level !== 'title') {
+          const value = ws[cellRef].v;
+          if (typeof value === 'number' || value === '' || value === null) {
+            if (typeof value !== 'number') {
+              ws[cellRef].v = 0;
+              ws[cellRef].t = 'n';
+            }
+            ws[cellRef].z = '#,##0.00';
+          }
+        }
+      }
+    });
+
+    // Set column widths
+    ws['!cols'] = [
+      { wch: 60 }, // Description
+      ...Array(months.length).fill({ wch: 12 }), // Month columns
+      { wch: 15 }, // Total
+    ];
+
+    ws['!rows'] = [];
+    ws['!rows'][3] = { hpx: 25 }; // Header row height
+
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'ABB Monthly Breakdown');
+
+    // Generate Excel file
+    const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array', cellStyles: true });
+    const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    
+    const fileName = `ABB_Monthly_Breakdown_${projectFilter}_${startDate}_to_${endDate}.xlsx`;
+    saveAs(blob, fileName);
+  };
+
   // Context menu handlers
   const handleContextMenu = (event: React.MouseEvent, documentNo: string) => {
     event.preventDefault();
@@ -530,6 +667,88 @@ export default function Report() {
 
   // Get the project currency from the first entry
   const projectCurrency = ledgerData.length > 0 ? ledgerData[0].Project_Currency : '';
+
+  // Generate monthly breakdown data for ABB popup
+  const generateMonthlyBreakdown = () => {
+    if (!startDate || !endDate || ledgerData.length === 0) {
+      return { months: [], rows: [] };
+    }
+
+    // Generate array of months between start and end date
+    const months = eachMonthOfInterval({
+      start: parseISO(startDate),
+      end: parseISO(endDate)
+    });
+
+    // Create rows for each task level
+    const rows: Array<{
+      level: 'Top' | 'Middle' | 'Detail';
+      taskNo: string;
+      description: string;
+      monthlyAmounts: number[];
+    }> = [];
+
+    // Process grouped data to extract hierarchy
+    Object.entries(groupedData).forEach(([taskTop, middleData]) => {
+      // Add top level
+      const topEntries = Object.values(middleData).flatMap(detail => 
+        Object.values(detail).flatMap(d => d.entries)
+      );
+      const topMonthlyAmounts = months.map(month => {
+        const monthStr = format(startOfMonth(month), 'yyyy-MM');
+        return topEntries
+          .filter(entry => format(parseISO(entry.Posting_Date), 'yyyy-MM') === monthStr)
+          .reduce((sum, entry) => sum + entry.Formula, 0);
+      });
+      
+      rows.push({
+        level: 'Top',
+        taskNo: taskTop.split(' - ')[0],
+        description: taskTop,
+        monthlyAmounts: topMonthlyAmounts
+      });
+
+      // Add middle and detail levels
+      Object.entries(middleData).forEach(([taskMiddle, detailData]) => {
+        const middleEntries = Object.values(detailData).flatMap(d => d.entries);
+        const middleMonthlyAmounts = months.map(month => {
+          const monthStr = format(startOfMonth(month), 'yyyy-MM');
+          return middleEntries
+            .filter(entry => format(parseISO(entry.Posting_Date), 'yyyy-MM') === monthStr)
+            .reduce((sum, entry) => sum + entry.Formula, 0);
+        });
+
+        // Only add middle level row if it's not '_NO_MIDDLE_LEVEL_'
+        if (taskMiddle !== '_NO_MIDDLE_LEVEL_') {
+          rows.push({
+            level: 'Middle',
+            taskNo: taskMiddle.split(' - ')[0],
+            description: taskMiddle,
+            monthlyAmounts: middleMonthlyAmounts
+          });
+        }
+
+        // Add detail levels
+        Object.entries(detailData).forEach(([taskDetail, data]) => {
+          const detailMonthlyAmounts = months.map(month => {
+            const monthStr = format(startOfMonth(month), 'yyyy-MM');
+            return data.entries
+              .filter(entry => format(parseISO(entry.Posting_Date), 'yyyy-MM') === monthStr)
+              .reduce((sum, entry) => sum + entry.Formula, 0);
+          });
+
+          rows.push({
+            level: 'Detail',
+            taskNo: data.jobTaskNo,
+            description: taskDetail,
+            monthlyAmounts: detailMonthlyAmounts
+          });
+        });
+      });
+    });
+
+    return { months, rows };
+  };
 
   return (
     <Box sx={{ p: 2 }}>
@@ -639,6 +858,10 @@ export default function Report() {
               size="small"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
+              onKeyDown={(e) => {
+                // Stop propagation of certain keys to prevent browser shortcuts
+                e.stopPropagation();
+              }}
               InputLabelProps={{ shrink: true }}
               sx={{ minWidth: 140 }}
               disabled={!isAuthenticated}
@@ -650,6 +873,10 @@ export default function Report() {
               size="small"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
+              onKeyDown={(e) => {
+                // Stop propagation of certain keys to prevent browser shortcuts
+                e.stopPropagation();
+              }}
               InputLabelProps={{ shrink: true }}
               sx={{ minWidth: 140 }}
               disabled={!isAuthenticated}
@@ -675,6 +902,17 @@ export default function Report() {
               startIcon={<FileDownloadIcon />}
             >
               Export to Excel
+            </Button>
+
+            <Button 
+              variant="outlined" 
+              color="info"
+              size="small"
+              disabled={Object.keys(groupedData).length === 0}
+              onClick={() => setAbbDialogOpen(true)}
+              startIcon={<CalendarMonthIcon />}
+            >
+              ABB
             </Button>
           </Box>
         </CardContent>
@@ -1046,6 +1284,185 @@ export default function Report() {
           View Entry in Business Central
         </MenuItem>
       </Menu>
+
+      {/* ABB Monthly Breakdown Dialog */}
+      <Dialog 
+        open={abbDialogOpen} 
+        onClose={() => setAbbDialogOpen(false)}
+        maxWidth="xl"
+        fullWidth
+      >
+        <DialogTitle>
+          Activity-Based Budget - Monthly Breakdown
+          <Typography variant="subtitle2" color="text.secondary">
+            {projectFilter}{startDate && endDate ? ` | ${format(parseISO(startDate), 'MMM dd, yyyy')} - ${format(parseISO(endDate), 'MMM dd, yyyy')}` : ''}
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          {(() => {
+            const { months, rows } = generateMonthlyBreakdown();
+            
+            if (rows.length === 0) {
+              return <Typography>No data available</Typography>;
+            }
+
+            return (
+              <TableContainer component={Paper} sx={{ maxHeight: 600 }}>
+                <Table stickyHeader size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell 
+                        sx={{ 
+                          fontWeight: 'bold', 
+                          backgroundColor: '#005272', 
+                          color: 'white',
+                          minWidth: 300,
+                          position: 'sticky',
+                          left: 0,
+                          zIndex: 3
+                        }}
+                      >
+                        Description
+                      </TableCell>
+                      {months.map((month, idx) => (
+                        <TableCell 
+                          key={idx}
+                          align="right"
+                          sx={{ 
+                            fontWeight: 'bold', 
+                            backgroundColor: '#005272', 
+                            color: 'white',
+                            minWidth: 100
+                          }}
+                        >
+                          {format(month, 'MMM yy')}
+                        </TableCell>
+                      ))}
+                      <TableCell 
+                        align="right"
+                        sx={{ 
+                          fontWeight: 'bold', 
+                          backgroundColor: '#0d47a1', 
+                          color: 'white',
+                          minWidth: 120
+                        }}
+                      >
+                        Total
+                      </TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {rows.map((row, rowIdx) => {
+                      const total = row.monthlyAmounts.reduce((sum, amt) => sum + amt, 0);
+                      const bgColor = 
+                        row.level === 'Top' ? '#ADD8E6' : 
+                        row.level === 'Middle' ? '#E8F4F8' : 
+                        'white';
+                      
+                      return (
+                        <TableRow key={rowIdx}>
+                          <TableCell 
+                            sx={{ 
+                              fontWeight: row.level === 'Top' ? 'bold' : 'normal',
+                              backgroundColor: bgColor,
+                              fontSize: '0.75rem',
+                              pl: row.level === 'Detail' ? 4 : row.level === 'Middle' ? 2 : 1,
+                              position: 'sticky',
+                              left: 0,
+                              zIndex: 1
+                            }}
+                          >
+                            {row.description}
+                          </TableCell>
+                          {row.monthlyAmounts.map((amount, colIdx) => (
+                            <TableCell 
+                              key={colIdx}
+                              align="right"
+                              sx={{ 
+                                backgroundColor: bgColor,
+                                fontSize: '0.75rem'
+                              }}
+                            >
+                              {amount !== 0 ? amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
+                            </TableCell>
+                          ))}
+                          <TableCell 
+                            align="right"
+                            sx={{ 
+                              fontWeight: 'bold',
+                              backgroundColor: bgColor,
+                              fontSize: '0.75rem'
+                            }}
+                          >
+                            {total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                    {/* Grand Total Row */}
+                    <TableRow>
+                      <TableCell 
+                        sx={{ 
+                          fontWeight: 'bold',
+                          backgroundColor: '#0d47a1',
+                          color: 'white',
+                          fontSize: '0.75rem',
+                          position: 'sticky',
+                          left: 0,
+                          zIndex: 1
+                        }}
+                      >
+                        GRAND TOTAL
+                      </TableCell>
+                      {months.map((_, colIdx) => {
+                        const monthTotal = rows.filter(row => row.level === 'Detail').reduce((sum, row) => sum + row.monthlyAmounts[colIdx], 0);
+                        return (
+                          <TableCell 
+                            key={colIdx}
+                            align="right"
+                            sx={{ 
+                              fontWeight: 'bold',
+                              backgroundColor: '#0d47a1',
+                              color: 'white',
+                              fontSize: '0.75rem'
+                            }}
+                          >
+                            {monthTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </TableCell>
+                        );
+                      })}
+                      <TableCell 
+                        align="right"
+                        sx={{ 
+                          fontWeight: 'bold',
+                          backgroundColor: '#0d47a1',
+                          color: 'white',
+                          fontSize: '0.75rem'
+                        }}
+                      >
+                        {rows.filter(row => row.level === 'Detail').reduce((sum, row) => sum + row.monthlyAmounts.reduce((s, amt) => s + amt, 0), 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            );
+          })()}
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={exportAbbToExcel}
+            variant="outlined"
+            color="success"
+            startIcon={<FileDownloadIcon />}
+          >
+            Export to Excel
+          </Button>
+          <Button onClick={() => setAbbDialogOpen(false)} color="primary">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

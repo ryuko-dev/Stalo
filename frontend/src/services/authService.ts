@@ -44,12 +44,14 @@ const msalConfig: Configuration = {
   },
 };
 
-// Microsoft Graph scopes for user identity (removed BC scopes - backend handles BC auth)
+// Microsoft Graph scopes for user identity and SharePoint access
 const loginScopes = [
   'openid',
   'profile',
   'email',
   'offline_access',
+  'Files.ReadWrite.All', // SharePoint folder creation/access
+  'Sites.ReadWrite.All', // SharePoint site access
 ];
 
 let msalInstance: PublicClientApplication | null = null;
