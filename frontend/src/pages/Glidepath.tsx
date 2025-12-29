@@ -212,7 +212,7 @@ export default function Glidepath() {
   // Handle SharePoint folder creation/opening for budget versions
   const handleOpenBudgetFolder = async () => {
     if (!selectedProject || !selectedVersion) {
-      setSnackbar({ open: true, message: 'Please select a project and version first', severity: 'warning' });
+      setSnackbar({ open: true, message: 'Please select a project and version first', severity: 'info' });
       return;
     }
 
