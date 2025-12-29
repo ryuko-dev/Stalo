@@ -42,12 +42,13 @@ const allowedOrigins = [
 
 const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps or curl requests in dev)
-    if (!origin && process.env.NODE_ENV !== 'production') {
+    // Allow requests with no origin (same-origin requests when frontend is served from backend,
+    // mobile apps, curl requests, or Azure health probes)
+    if (!origin) {
       callback(null, true);
       return;
     }
-    if (origin && allowedOrigins.includes(origin)) {
+    if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else if (process.env.NODE_ENV !== 'production') {
       // In development, allow any origin but log it
