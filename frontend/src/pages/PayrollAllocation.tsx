@@ -46,7 +46,7 @@ import {
 import { usePermissions } from '../contexts/PermissionsContext';
 import type { PayrollResource, PayrollRecord } from '../types';
 import { format, startOfMonth, eachDayOfInterval, getDay, endOfMonth } from 'date-fns';
-import * as XLSX from 'xlsx';
+import * as XLSX from 'xlsx-js-style';
 import { getEntities, getPayrollAllocations } from '../services/staloService';
 
 interface PayrollAllocationProps {

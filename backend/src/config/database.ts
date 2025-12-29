@@ -36,4 +36,8 @@ export async function getConnection(): Promise<sql.ConnectionPool> {
   }
 }
 
+export function getDbConfig(): sql.config {
+  return config;
+}
+
 export { sql };

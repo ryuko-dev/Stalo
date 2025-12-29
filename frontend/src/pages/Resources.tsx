@@ -44,7 +44,7 @@ import { usePermissions } from '../contexts/PermissionsContext';
 import type { Resource } from '../types';
 import type { Entity } from '../types/entities';
 import { format } from 'date-fns';
-import * as XLSX from 'xlsx';
+import * as XLSX from 'xlsx-js-style';
 
 const resourceTypes = ['Staff', 'SME'];
 const workDaysOptions = ['Mon-Fri', 'Sun-Thu'];

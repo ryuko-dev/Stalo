@@ -158,6 +158,13 @@ export const PermissionsProvider: React.FC<{ children: ReactNode }> = ({ childre
             canDelete: true,
             canExport: true,
           };
+        case 'glidepath':
+          return {
+            canView: true,
+            canEdit: true,
+            canDelete: true,
+            canExport: true,
+          };
         case 'report':
         case 'reports':
           return {
@@ -171,7 +178,6 @@ export const PermissionsProvider: React.FC<{ children: ReactNode }> = ({ childre
         case 'resources':
         case 'positions':
         case 'gantt':
-        case 'glidepath':
         case 'payroll':
           return {
             canView: true,

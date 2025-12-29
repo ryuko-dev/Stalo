@@ -18,6 +18,7 @@ import positionsRouter from './routes/positions';
 import payrollRouter from './routes/payroll';
 import scheduledRecordsRouter from './routes/scheduledRecords';
 import businessCentralRouter from './routes/businessCentral';
+import budgetRouter from './routes/budget';
 import { getConnection } from './config/database';
 
 dotenv.config();
@@ -40,6 +41,7 @@ app.use('/api/positions', positionsRouter);
 app.use('/api/payroll', payrollRouter);
 app.use('/api/scheduled-records', scheduledRecordsRouter);
 app.use('/api/bc', businessCentralRouter);
+app.use('/api/budget', budgetRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {
