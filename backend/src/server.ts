@@ -28,6 +28,10 @@ import { requireViewer, requireEditor, requireAdmin } from './middleware/rbac';
 const app = express();
 const PORT = process.env.PORT || 5003;
 
+// Trust proxy - required for Azure App Service, Heroku, etc.
+// This allows Express to read X-Forwarded-* headers correctly
+app.set('trust proxy', true);
+
 // CORS configuration - restrict to known origins
 const allowedOrigins = [
   'http://localhost:3000',
