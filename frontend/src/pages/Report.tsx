@@ -5,6 +5,7 @@ import { useState, useEffect, Fragment } from 'react';
 import * as XLSX from 'xlsx-js-style';
 import { saveAs } from 'file-saver';
 import { format, eachMonthOfInterval, parseISO, startOfMonth } from 'date-fns';
+import api from '../services/api';
 
 interface ProjectLedgerEntry {
   Donor_Project_No: string;
@@ -98,12 +99,8 @@ export default function Report() {
   const fetchBudgetVersions = async (projectNo: string) => {
     setIsLoadingVersions(true);
     try {
-      const response = await fetch(`http://localhost:3001/api/budget/versions/${encodeURIComponent(projectNo)}`);
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to fetch budget versions');
-      }
+      const response = await api.get(`/budget/versions/${encodeURIComponent(projectNo)}`);
+      const data = response.data;
       
       const versions = data.versions || [];
       setBudgetVersions(versions);
@@ -125,12 +122,8 @@ export default function Report() {
   const fetchProjects = async () => {
     setIsLoadingProjects(true);
     try {
-      const response = await fetch('http://localhost:3001/api/bc/projects');
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to fetch projects');
-      }
+      const response = await api.get('/bc/projects');
+      const data = response.data;
       
       setProjectOptions(data.projects.sort());
       console.log(`✅ Loaded ${data.projects.length} projects from Job_List`);
@@ -159,12 +152,8 @@ export default function Report() {
         ...(selectedVersion && { versionId: selectedVersion.toString() }),
       });
 
-      const response = await fetch(`http://localhost:3001/api/bc/ledger-entries?${params}`);
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to generate report');
-      }
+      const response = await api.get(`/bc/ledger-entries?${params}`);
+      const data = response.data;
       
       setLedgerData(data.entries);
       setJobTaskHierarchy(data.jobTaskHierarchy || []);

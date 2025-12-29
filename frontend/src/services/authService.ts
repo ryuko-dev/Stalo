@@ -45,7 +45,8 @@ const msalConfig: Configuration = {
 };
 
 // Microsoft Graph scopes for user identity and SharePoint access
-const loginScopes = [
+// Exported for use in API interceptor
+export const loginScopes = [
   'openid',
   'profile',
   'email',

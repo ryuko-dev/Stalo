@@ -8,6 +8,7 @@ import AddIcon from '@mui/icons-material/Add';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import SaveBudgetDialog from '../components/SaveBudgetDialog';
 import sharepointService from '../services/sharepointService';
+import api from '../services/api';
 
 interface ProjectCard {
   No: string;
@@ -109,12 +110,8 @@ export default function Glidepath() {
     setIsLoadingProjects(true);
     setError(null);
     try {
-      const response = await fetch('http://localhost:3001/api/bc/project-cards');
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to fetch projects');
-      }
+      const response = await api.get('/bc/project-cards');
+      const data = response.data;
       
       setProjects(data.projectCards);
       console.log(`✅ Loaded ${data.count} project cards`);
@@ -130,12 +127,8 @@ export default function Glidepath() {
     setIsLoadingTasks(true);
     setError(null);
     try {
-      const response = await fetch(`http://localhost:3001/api/bc/job-task-lines?jobNo=${encodeURIComponent(jobNo)}`);
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to fetch job task lines');
-      }
+      const response = await api.get(`/bc/job-task-lines?jobNo=${encodeURIComponent(jobNo)}`);
+      const data = response.data;
       
       setJobTaskLines(data.taskLines);
       console.log(`✅ Loaded ${data.count} job task lines for project ${jobNo}`);
@@ -150,12 +143,8 @@ export default function Glidepath() {
   const fetchVersions = async (jobNo: string) => {
     setIsLoadingVersions(true);
     try {
-      const response = await fetch(`http://localhost:3001/api/budget/versions/${encodeURIComponent(jobNo)}`);
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to fetch versions');
-      }
+      const response = await api.get(`/budget/versions/${encodeURIComponent(jobNo)}`);
+      const data = response.data;
       
       setVersions(data.versions);
       // Auto-select latest version
@@ -176,12 +165,8 @@ export default function Glidepath() {
 
   const fetchBudgetData = async (versionId: number) => {
     try {
-      const response = await fetch(`http://localhost:3001/api/budget/data/${versionId}`);
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to fetch budget data');
-      }
+      const response = await api.get(`/budget/data/${versionId}`);
+      const data = response.data;
       
       // Convert array to Map for fast lookup using proper key format
       // Key format: "Job_Task_No|yyyy-MM-dd" to match getCellKey format
@@ -257,23 +242,15 @@ export default function Glidepath() {
 
       if (saveAsNew) {
         // Create new version
-        const createResponse = await fetch('http://localhost:3001/api/budget/versions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            jobNo: selectedProject.No,
-            versionName,
-            versionDescription: description,
-            sourceType: saveDialogMode === 'upload' ? 'Excel Upload' : 'Manual Edit',
-            createdBy: userEmail
-          })
+        const createResponse = await api.post('/budget/versions', {
+          jobNo: selectedProject.No,
+          versionName,
+          versionDescription: description,
+          sourceType: saveDialogMode === 'upload' ? 'Excel Upload' : 'Manual Edit',
+          createdBy: userEmail
         });
 
-        const createData = await createResponse.json();
-        if (!createResponse.ok) {
-          throw new Error(createData.error || 'Failed to create version');
-        }
-
+        const createData = createResponse.data;
         targetVersionId = createData.version.Version_ID;
       } else {
         if (!selectedVersion) {
@@ -296,39 +273,26 @@ export default function Glidepath() {
 
       // Save budget data only if there are changes
       if (budgetDataArray.length > 0) {
-        const endpoint = saveAsNew || saveDialogMode === 'upload' 
-          ? `http://localhost:3001/api/budget/data/${targetVersionId}`
-          : `http://localhost:3001/api/budget/data/${targetVersionId}`;
+        const endpoint = `/budget/data/${targetVersionId}`;
         
-        const method = 'POST';
-        const saveResponse = await fetch(endpoint, {
-          method,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            budgetData: budgetDataArray,
-            modifiedBy: userEmail
-          })
+        await api.post(endpoint, {
+          budgetData: budgetDataArray,
+          modifiedBy: userEmail
         });
-
-        const saveData = await saveResponse.json();
-        if (!saveResponse.ok) {
-          throw new Error(saveData.error || 'Failed to save budget data');
-        }
       }
 
       // Refresh versions and data
       await fetchVersions(selectedProject.No);
       if (saveAsNew) {
         // Need to refetch to get the new version
-        const versionsResponse = await fetch(`http://localhost:3001/api/budget/versions/${encodeURIComponent(selectedProject.No)}`);
-        const versionsData = await versionsResponse.json();
-        if (versionsResponse.ok) {
-          setVersions(versionsData.versions);
-          // Select the newly created version
-          const newVersion = versionsData.versions.find((v: BudgetVersion) => v.Version_ID === targetVersionId);
-          if (newVersion) {
-            setSelectedVersion(newVersion);
-          }
+        const versionsResponse = await api.get(`/budget/versions/${encodeURIComponent(selectedProject.No)}`);
+        const versionsData = versionsResponse.data;
+        
+        setVersions(versionsData.versions);
+        // Select the newly created version
+        const newVersion = versionsData.versions.find((v: BudgetVersion) => v.Version_ID === targetVersionId);
+        if (newVersion) {
+          setSelectedVersion(newVersion);
         }
       } else {
         // Reload current version data to show updated values
