@@ -75,9 +75,9 @@ function AppContent() {
       {isAuthenticated && hasAccess && (
         <AppBar position="static">
           <Toolbar>
-            <Typography variant="h6" component={Link} to="/" sx={{ textDecoration: 'none', color: 'inherit' }}>
-              Stalo
-            </Typography>
+            <Box component={Link} to="/" sx={{ display: 'flex', alignItems: 'center', textDecoration: 'none', color: 'inherit' }}>
+              <img src="/logo.png" alt="Stalo" style={{ height: '40px', marginRight: '8px' }} />
+            </Box>
             
             {/* Navigation menu - conditional based on permissions */}
             <Box sx={{ flexGrow: 1, display: 'flex', gap: 1, alignItems: 'center', ml: 2 }}>
