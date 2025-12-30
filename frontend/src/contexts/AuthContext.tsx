@@ -10,6 +10,7 @@ import type { AccountInfo } from '@azure/msal-browser';
 import {
   initMsal,
   loginPopup,
+  loginRedirect,
   logout as msalLogout,
   getCurrentAccount,
   isAuthenticated as msalIsAuthenticated,
@@ -121,24 +122,37 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       setError(null);
       setIsLoading(true);
-      await loginPopup();
       
-      const account = await getCurrentAccount();
-      const displayName = await getUserDisplayName();
-      const email = await getUserEmail();
+      // Use redirect flow in production (more reliable), popup in development
+      const isProduction = import.meta.env.PROD;
       
-      setIsAuthenticated(true);
-      setUser(account);
-      setUserDisplayName(displayName);
-      setUserEmail(email);
-      
-      // Ensure user is in the system users table
-      await ensureUserInDatabase(displayName, email);
-      
-      console.log(`✅ Login successful: ${displayName} (${email})`);
-      setIsLoading(false);
+      if (isProduction) {
+        // Redirect flow - will navigate away and come back
+        console.log('Using redirect login flow for production...');
+        await loginRedirect();
+        // Note: execution stops here as page redirects
+      } else {
+        // Popup flow for development
+        console.log('Using popup login flow for development...');
+        await loginPopup();
+        
+        const account = await getCurrentAccount();
+        const displayName = await getUserDisplayName();
+        const email = await getUserEmail();
+        
+        setIsAuthenticated(true);
+        setUser(account);
+        setUserDisplayName(displayName);
+        setUserEmail(email);
+        
+        // Ensure user is in the system users table
+        await ensureUserInDatabase(displayName, email);
+        
+        console.log(`✅ Login successful: ${displayName} (${email})`);
+        setIsLoading(false);
+      }
     } catch (err: any) {
-      if (err.errorCode === 'user_cancelled_login') {
+      if (err.errorCode === 'user_cancelled' || err.errorCode === 'user_cancelled_login') {
         console.log('User cancelled login');
         setIsLoading(false);
         return;

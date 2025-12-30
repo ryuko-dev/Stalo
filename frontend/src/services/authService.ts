@@ -24,13 +24,13 @@ const msalConfig: Configuration = {
   auth: {
     clientId: clientId,
     authority: `https://login.microsoftonline.com/${tenantId}`,
-    redirectUri: import.meta.env.VITE_MSAL_REDIRECT_URI || 'http://localhost:3000',
-    postLogoutRedirectUri: import.meta.env.VITE_MSAL_LOGOUT_REDIRECT_URI || 'http://localhost:3000',
-    navigateToLoginRequestUrl: false,
+    redirectUri: import.meta.env.VITE_MSAL_REDIRECT_URI || window.location.origin,
+    postLogoutRedirectUri: import.meta.env.VITE_MSAL_LOGOUT_REDIRECT_URI || window.location.origin,
+    navigateToLoginRequestUrl: true, // Changed to true for better redirect handling
   },
   cache: {
-    cacheLocation: 'sessionStorage', // Can be 'sessionStorage' or 'localStorage'
-    storeAuthStateInCookie: false,
+    cacheLocation: 'localStorage', // Changed to localStorage for persistence across redirects
+    storeAuthStateInCookie: true, // Changed to true for better cross-browser compatibility
   },
   system: {
     loggerOptions: {
