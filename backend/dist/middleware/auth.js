@@ -15,6 +15,11 @@ const jwks_rsa_1 = __importDefault(require("jwks-rsa"));
 // Azure AD configuration
 const TENANT_ID = process.env.MSAL_TENANT_ID || process.env.BC_TENANT_ID || '';
 const CLIENT_ID = process.env.MSAL_CLIENT_ID || '';
+// Allowed email domains (comma-separated in env var)
+// Example: "arkgroupdmcc.com,example.com"
+const ALLOWED_DOMAINS = process.env.ALLOWED_EMAIL_DOMAINS
+    ? process.env.ALLOWED_EMAIL_DOMAINS.split(',').map(d => d.trim().toLowerCase())
+    : [];
 // JWKS client - lazy initialization to avoid issues with empty tenant
 let jwksClient = null;
 function getJwksClient() {
@@ -121,6 +126,18 @@ const authMiddleware = async (req, res, next) => {
                 tid: payload.tid || '',
                 roles: payload.roles || [],
             };
+            // Check if user's email domain is allowed
+            if (ALLOWED_DOMAINS.length > 0 && req.user.email) {
+                const emailDomain = req.user.email.split('@')[1]?.toLowerCase();
+                if (!emailDomain || !ALLOWED_DOMAINS.includes(emailDomain)) {
+                    console.warn(`🚫 Access denied for domain: ${emailDomain} (user: ${req.user.email})`);
+                    res.status(403).json({
+                        error: 'Access denied',
+                        message: 'Your email domain is not authorized to access this application'
+                    });
+                    return;
+                }
+            }
             next();
         });
     }
