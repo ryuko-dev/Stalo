@@ -165,13 +165,7 @@ export async function logout(): Promise<void> {
     // This removes all tokens, accounts, and cached data
     console.log('🗑️ Clearing MSAL cache...');
     
-    // Method 1: Use MSAL's built-in cache clearing
-    const accounts = msalClient.getAllAccounts();
-    for (const acc of accounts) {
-      await msalClient.clearCache(acc);
-    }
-    
-    // Method 2: Manually clear all MSAL-related localStorage items as backup
+    // Manually clear all MSAL-related localStorage items
     const keysToRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -181,7 +175,7 @@ export async function logout(): Promise<void> {
     }
     keysToRemove.forEach(key => localStorage.removeItem(key));
     
-    console.log(`✅ Cleared ${accounts.length} accounts and ${keysToRemove.length} localStorage entries`);
+    console.log(`✅ Cleared ${keysToRemove.length} localStorage entries`);
 
     // Now perform the actual logout
     if (account) {
