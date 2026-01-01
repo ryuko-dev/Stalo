@@ -31,7 +31,8 @@ const app = (0, express_1.default)();
 const PORT = process.env.PORT || 5003;
 // Trust proxy - required for Azure App Service, Heroku, etc.
 // This allows Express to read X-Forwarded-* headers correctly
-app.set('trust proxy', true);
+// Setting to 1 means trust the first proxy (Azure's load balancer)
+app.set('trust proxy', 1);
 // CORS configuration - restrict to known origins
 const allowedOrigins = [
     'http://localhost:3000',
@@ -70,6 +71,9 @@ const apiLimiter = (0, express_rate_limit_1.default)({
     message: { error: 'Too many requests, please try again later.' },
     standardHeaders: true,
     legacyHeaders: false,
+    // Skip failing requests - don't count them toward the limit
+    skipFailedRequests: false,
+    skipSuccessfulRequests: false,
 });
 // Stricter rate limit for auth-related endpoints
 const authLimiter = (0, express_rate_limit_1.default)({
