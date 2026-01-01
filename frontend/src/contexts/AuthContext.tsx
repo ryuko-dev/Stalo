@@ -9,6 +9,7 @@ import React, { createContext, useContext, useState, useEffect, type ReactNode }
 import type { AccountInfo } from '@azure/msal-browser';
 import {
   initMsal,
+  handleRedirectPromise,
   loginPopup,
   loginRedirect,
   logout as msalLogout,
@@ -91,22 +92,43 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const initializeAuth = async () => {
       try {
         await initMsal();
-        const authenticated = await msalIsAuthenticated();
-        const account = await getCurrentAccount();
         
-        setIsAuthenticated(authenticated);
-        setUser(account);
+        // Handle redirect promise first (if returning from Microsoft login)
+        const redirectResponse = await handleRedirectPromise();
         
-        if (account) {
-          const displayName = await getUserDisplayName();
-          const email = await getUserEmail();
+        if (redirectResponse && redirectResponse.account) {
+          // User just completed redirect login
+          const displayName = redirectResponse.account.name || '';
+          const email = redirectResponse.account.username || '';
+          
+          setIsAuthenticated(true);
+          setUser(redirectResponse.account);
           setUserDisplayName(displayName);
           setUserEmail(email);
           
           // Ensure user is in the system users table
           await ensureUserInDatabase(displayName, email);
           
-          console.log(`✅ User auto-logged in: ${displayName} (${email})`);
+          console.log(`✅ Redirect login completed: ${displayName} (${email})`);
+        } else {
+          // Check for existing session (no redirect)
+          const authenticated = await msalIsAuthenticated();
+          const account = await getCurrentAccount();
+          
+          setIsAuthenticated(authenticated);
+          setUser(account);
+          
+          if (account) {
+            const displayName = await getUserDisplayName();
+            const email = await getUserEmail();
+            setUserDisplayName(displayName);
+            setUserEmail(email);
+            
+            // Ensure user is in the system users table
+            await ensureUserInDatabase(displayName, email);
+            
+            console.log(`✅ User auto-logged in: ${displayName} (${email})`);
+          }
         }
       } catch (err: any) {
         console.error('MSAL initialization error:', err);
@@ -173,13 +195,24 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const handleLogout = async () => {
     try {
       setError(null);
+      
+      // Clear authentication service cache and logout
       await msalLogout();
+      
+      // Clear local state
       setIsAuthenticated(false);
       setUser(null);
       setUserDisplayName('');
       setUserEmail('');
-      console.log('✅ Logout successful');
+      
+      console.log('✅ Logout successful - cache cleared, fresh login required');
     } catch (err: any) {
+      // Even if logout fails, clear local state
+      setIsAuthenticated(false);
+      setUser(null);
+      setUserDisplayName('');
+      setUserEmail('');
+      
       setError(err.message || 'Logout failed');
       console.error('Logout error:', err);
     }

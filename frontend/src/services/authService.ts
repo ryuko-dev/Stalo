@@ -78,11 +78,6 @@ export async function initMsal(): Promise<PublicClientApplication> {
     await msalInstance.initialize();
   }
 
-  // Handle the redirect from Azure AD after login
-  msalInstance.handleRedirectPromise().catch((error: any) => {
-    console.error('MSAL redirect error:', error);
-  });
-
   return msalInstance;
 }
 
@@ -94,6 +89,26 @@ export async function getMsalInstance(): Promise<PublicClientApplication> {
     return await initMsal();
   }
   return msalInstance;
+}
+
+/**
+ * Handle redirect promise after login redirect
+ * Call this on app initialization to complete the redirect flow
+ */
+export async function handleRedirectPromise(): Promise<AuthenticationResult | null> {
+  const msalClient = await getMsalInstance();
+  try {
+    const response = await msalClient.handleRedirectPromise();
+    if (response) {
+      console.log('✅ Redirect login successful:', response.account?.name);
+      msalClient.setActiveAccount(response.account);
+      return response;
+    }
+    return null;
+  } catch (error: any) {
+    console.error('❌ MSAL redirect error:', error);
+    throw error;
+  }
 }
 
 /**
@@ -139,16 +154,48 @@ export async function loginRedirect(): Promise<void> {
 }
 
 /**
- * Logout
+ * Logout - Clears all cached tokens and logs out the user
  */
 export async function logout(): Promise<void> {
   const msalClient = await getMsalInstance();
   const account = msalClient.getActiveAccount();
 
-  if (account) {
-    await msalClient.logoutPopup({
-      account: account,
-    });
+  try {
+    // Clear all MSAL cache from localStorage to prevent auto-login
+    // This removes all tokens, accounts, and cached data
+    console.log('🗑️ Clearing MSAL cache...');
+    
+    // Method 1: Use MSAL's built-in cache clearing
+    const accounts = msalClient.getAllAccounts();
+    for (const acc of accounts) {
+      await msalClient.clearCache(acc);
+    }
+    
+    // Method 2: Manually clear all MSAL-related localStorage items as backup
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('msal')) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(key => localStorage.removeItem(key));
+    
+    console.log(`✅ Cleared ${accounts.length} accounts and ${keysToRemove.length} localStorage entries`);
+
+    // Now perform the actual logout
+    if (account) {
+      await msalClient.logoutPopup({
+        account: account,
+      });
+    }
+    
+    console.log('✅ Logout complete - fresh login required next time');
+  } catch (error: any) {
+    console.error('❌ Logout error:', error);
+    // Even if logout fails, clear the cache to prevent auto-login
+    localStorage.clear(); // Nuclear option if individual clearing fails
+    throw error;
   }
 }
 
@@ -226,6 +273,7 @@ export async function getUserEmail(): Promise<string> {
 export default {
   initMsal,
   getMsalInstance,
+  handleRedirectPromise,
   loginPopup,
   loginRedirect,
   logout,
