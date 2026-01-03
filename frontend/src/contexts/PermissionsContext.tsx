@@ -273,7 +273,10 @@ export const PermissionsProvider: React.FC<{ children: ReactNode }> = ({ childre
     isEditor,
     canAccessSettings,
     getPagePermissions,
-    refreshPermissions: fetchUserPermissions,
+    refreshPermissions: async () => {
+      const controller = new AbortController();
+      await fetchUserPermissions(controller.signal);
+    },
     viewingAsRole,
     setViewingAsRole,
     isSuperAdmin,
