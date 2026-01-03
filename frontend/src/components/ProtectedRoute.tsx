@@ -12,6 +12,7 @@ export default function ProtectedRoute({ children, page }: ProtectedRouteProps) 
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { hasAccess, isLoadingPermissions, getPagePermissions } = usePermissions();
 
+  // Show loading while auth or permissions are being checked
   if (authLoading || isLoadingPermissions) {
     return (
       <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
@@ -25,8 +26,9 @@ export default function ProtectedRoute({ children, page }: ProtectedRouteProps) 
     return <Navigate to="/login" replace />;
   }
 
-  // If user has no role assigned, redirect to no-access page
-  if (!hasAccess) {
+  // Only redirect to no-access if permissions have finished loading and user still has no access
+  // This prevents premature redirect during initial permission fetch
+  if (!isLoadingPermissions && !hasAccess) {
     return <Navigate to="/no-access" replace />;
   }
 

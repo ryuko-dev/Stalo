@@ -1,0 +1,11 @@
+<step title="Incoming Request" date="2025-12-29T22:40:39.665" instance="2c550d" url="/api/deployments/latest?deployer=OneDeploy&amp;time=2025-12-29_22-40-03Z" method="GET" type="request" pid="830,1,60" Host="stalo-h5d6djg6duahfkc9.scm.canadacentral-01.azurewebsites.net" User-Agent="GITHUBACTIONS_DeployWebAppToAzure_be4d951cec5033ad0749adece734372be7817cd889e38543b3e816b49d7850dd" Authorization="Bas..." Content-Type="application/json; charset=utf-8" Cookie="ARRAffinity=2c550d49ed3e1b1a45dc9c4395b7293b5ef7655bd4027d094c053da6ad53b43c;Path=/;HttpOnly;Secure;Domain=stalo-h5d6djg6duahfkc9.scm.canadacentral-01.azurewebsites.net; ARRAffinitySameSite=2c550d49ed3e1b1a45dc9c4395b7293b5ef7655bd4027d094c053da6ad53b43c;Path=/;HttpOnly;SameSite=None;Secure;Domain=stalo-h5d6djg6duahfkc9.scm.canadacentral-01.azurewebsites.net" Content-Length="0" X-ARR-LOG-ID="ac33a1b2-962b-4e44-bf23-983346a4dfb6" CLIENT-IP="20.97.198.241:1026" X-SITE-DEPLOYMENT-ID="stalo" WAS-DEFAULT-HOSTNAME="stalo-h5d6djg6duahfkc9.scm.canadacentral-01.azurewebsites.net" X-Forwarded-Proto="https" X-AppService-Proto="https" X-Forwarded-TlsVersion="1.3" X-WAWS-Unencoded-URL="/api/deployments/latest?deployer=OneDeploy&amp;time=2025-12-29_22-40-03Z" X-Client-IP="20.97.198.241" X-Client-Port="1026" >
+  <step title="Cleanup Xml Logs" date="2025-12-29T22:40:39.675" >
+    <step title="Cleanup Infos" date="2025-12-29T22:40:39.702" totalFiles="215" totalCleanup="55" /><!-- duration: 21ms -->
+  </step><!-- duration: 66ms -->
+  <step title="DeploymentService.GetResult" date="2025-12-29T22:40:39.766" >
+    <step title="DeploymentService.GetLatestDeployment" date="2025-12-29T22:40:39.804" >
+      <step title="DeploymentManager.GetResults" date="2025-12-29T22:40:39.816" /><!-- duration: 790ms -->
+    </step><!-- duration: 812ms -->
+  </step><!-- duration: 859ms -->
+  <step title="Outgoing response" date="2025-12-29T22:40:40.635" type="response" statusCode="202" statusText="Accepted" /><!-- duration: 8ms -->
+</step><!-- duration: 986ms -->

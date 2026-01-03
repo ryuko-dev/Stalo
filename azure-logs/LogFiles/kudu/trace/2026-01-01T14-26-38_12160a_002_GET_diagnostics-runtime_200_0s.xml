@@ -1,0 +1,7 @@
+<step title="Incoming Request" date="2026-01-01T14:26:38.070" instance="12160a" url="/diagnostics/runtime" method="GET" type="request" pid="831,1,37" Host="stalo-h5d6djg6duahfkc9.scm.canadacentral-01.azurewebsites.net" User-Agent="GITHUBACTIONS_DeployWebAppToAzure_be4d951cec5033ad0749adece734372be7817cd889e38543b3e816b49d7850dd" Authorization="Bas..." Content-Type="application/json; charset=utf-8" Content-Length="0" X-ARR-LOG-ID="861802da-bcae-4d8c-90d9-27d46b79d16f" CLIENT-IP="135.232.216.67:6144" X-SITE-DEPLOYMENT-ID="stalo" WAS-DEFAULT-HOSTNAME="stalo-h5d6djg6duahfkc9.scm.canadacentral-01.azurewebsites.net" X-Forwarded-Proto="https" X-AppService-Proto="https" X-Forwarded-TlsVersion="1.3" X-WAWS-Unencoded-URL="/diagnostics/runtime" X-Client-IP="135.232.216.67" X-Client-Port="6144" >
+  <step title="Cleanup Xml Logs" date="2026-01-01T14:26:38.077" >
+    <step title="Cleanup Infos" date="2026-01-01T14:26:38.102" totalFiles="514" totalCleanup="354" /><!-- duration: 16ms -->
+  </step><!-- duration: 46ms -->
+  <step title="RuntimeController.GetRuntimeVersions" date="2026-01-01T14:26:38.223" /><!-- duration: 11ms -->
+  <step title="Outgoing response" date="2026-01-01T14:26:38.271" type="response" statusCode="200" statusText="OK" /><!-- duration: 10ms -->
+</step><!-- duration: 216ms -->

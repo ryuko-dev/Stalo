@@ -41,13 +41,13 @@ interface PermissionsContextType {
 const PermissionsContext = createContext<PermissionsContextType | undefined>(undefined);
 
 export const PermissionsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { isAuthenticated, userEmail } = useAuth();
+  const { isAuthenticated, userEmail, isLoading: authLoading } = useAuth();
   const [actualUserRole, setActualUserRole] = useState<RoleType | null>(null);
   const [viewingAsRole, setViewingAsRole] = useState<RoleType | null>(null);
   const [systemUser, setSystemUser] = useState<SystemUser | null>(null);
   const [isLoadingPermissions, setIsLoadingPermissions] = useState(true);
 
-  const fetchUserPermissions = async () => {
+  const fetchUserPermissions = async (signal: AbortSignal) => {
     if (!isAuthenticated || !userEmail) {
       setActualUserRole(null);
       setSystemUser(null);
@@ -71,9 +71,21 @@ export const PermissionsProvider: React.FC<{ children: ReactNode }> = ({ childre
       const startTime = Date.now();
       
       while (Date.now() - startTime < maxWaitTime) {
+        // Check if request was cancelled
+        if (signal.aborted) {
+          console.log('Permission fetch cancelled');
+          return;
+        }
+        
         try {
           const systemUsers = await getSystemUsers();
           const user = systemUsers.find(u => u.EmailAddress.toLowerCase() === userEmail.toLowerCase());
+          
+          // Check again if request was cancelled before setting state
+          if (signal.aborted) {
+            console.log('Permission fetch cancelled');
+            return;
+          }
           
           if (user) {
             setSystemUser(user);
@@ -102,13 +114,26 @@ export const PermissionsProvider: React.FC<{ children: ReactNode }> = ({ childre
       setSystemUser(null);
       setActualUserRole(null);
     } finally {
-      setIsLoadingPermissions(false);
+      if (!signal.aborted) {
+        setIsLoadingPermissions(false);
+      }
     }
   };
 
   useEffect(() => {
-    fetchUserPermissions();
-  }, [isAuthenticated, userEmail]);
+    // Don't fetch permissions until auth is fully loaded
+    if (authLoading) {
+      return;
+    }
+    
+    const abortController = new AbortController();
+    fetchUserPermissions(abortController.signal);
+    
+    // Cleanup function to abort on unmount or when dependencies change
+    return () => {
+      abortController.abort();
+    };
+  }, [isAuthenticated, userEmail, authLoading]);
 
   // Determine if user is super admin
   const isSuperAdmin = userEmail?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
@@ -165,6 +190,13 @@ export const PermissionsProvider: React.FC<{ children: ReactNode }> = ({ childre
             canDelete: true,
             canExport: true,
           };
+        case 'payments':
+          return {
+            canView: true,
+            canEdit: false,
+            canDelete: false,
+            canExport: true,
+          };
         case 'report':
         case 'reports':
           return {
@@ -206,6 +238,10 @@ export const PermissionsProvider: React.FC<{ children: ReactNode }> = ({ childre
           canDelete: false,
           canExport: false,
         };
+      }
+      // Explicitly deny payments for viewers
+      if (page.toLowerCase() === 'payments') {
+        return noAccess;
       }
       return noAccess;
     }

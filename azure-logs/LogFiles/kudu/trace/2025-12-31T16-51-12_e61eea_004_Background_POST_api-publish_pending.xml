@@ -1,0 +1,37 @@
+<step title="BackgroundTrace" date="2025-12-31T16:51:12.198" instance="e61eea" url="/api/publish" method="POST" >
+  <step title="Creating temporary deployment - FetchDeploymentManager" date="2025-12-31T16:51:12.253" /><!-- duration: 5ms -->
+  <step title="Creating temporary deployment" date="2025-12-31T16:51:12.263" /><!-- duration: 339ms -->
+  <step title="Performing fetch based deployment" date="2025-12-31T16:51:12.639" >
+    <step title="Cleaning up temp folders from previous zip deployments and extracting pushed zip file /tmp/zipdeploy/da73b000-e198-4ec4-bf24-12cd80433661.zip (53.85 MB) to /tmp/zipdeploy/extracted" date="2025-12-31T16:51:13.872" >
+      <step title="ChmodRecursive Process exited with total time taken in ms: 537" date="2025-12-31T16:51:46.493" /><!-- duration: 9ms -->
+    </step><!-- duration: 32638ms -->
+    <step title="Deployment timer started" date="2025-12-31T16:51:48.523" >
+      <step title="DeploymentManager.Deploy(id:4cd36828-27ff-4ff3-82b5-e51f951459b3)" date="2025-12-31T16:51:48.534" >
+        <step title="Collecting changeset information" date="2025-12-31T16:51:48.543" /><!-- duration: 664ms -->
+        <step title="Updating submodules" date="2025-12-31T16:51:49.215" /><!-- duration: 1229ms -->
+        <step title="Determining deployment builder" date="2025-12-31T16:51:50.689" >
+          <step title="Builder is OneDeployBuilder" date="2025-12-31T16:51:50.701" /><!-- duration: 3ms -->
+        </step><!-- duration: 20ms -->
+        <step title="PreDeployment: context.CleanOutputPath False" date="2025-12-31T16:51:50.764" >
+          <step title="PreDeployment: context.OutputPath /home/site/wwwroot" date="2025-12-31T16:51:50.894" >
+            <step title="Building" date="2025-12-31T16:51:51.067" >
+              <step title="Executing external process" date="2025-12-31T16:51:51.820" type="process" path="starter.sh" arguments="/opt/Kudu/Scripts/absoluteTar.sh /tmp/zipdeploy/extracted/node_modules /tmp/zipdeploy/extracted/node_modules.tar.gz" >
+                <step title="Cpu: gzip(891,15.040s)+sh(890,0.000s)+tar(889,4.940s)+absoluteTar.sh(888,0.000s)=total(19.980s)" date="2025-12-31T16:52:52.695" /><!-- duration: 10ms -->
+                <step title="starter.sh: no io activity for 60s, prev-cpu=-1.000s, current-cpu=19.980s" date="2025-12-31T16:52:52.761" /><!-- duration: 25ms -->
+              </step><!-- duration: 72335ms -->
+              <step title="Executing external process" date="2025-12-31T16:53:04.428" type="process" path="starter.sh" arguments="/opt/Kudu/Scripts/parallel_rsync.sh /tmp/zipdeploy/extracted /home/site/wwwroot 8 /tmp/ False False node_modules " /><!-- duration: 4113ms -->
+              <step title="Modified file to trigger a restart of the app container." date="2025-12-31T16:53:09.360" /><!-- duration: 3ms -->
+              <step title="Skip function trigger and logicapp sync because function is not enabled." date="2025-12-31T16:53:09.372" /><!-- duration: 3ms -->
+              <step title="Purge deployment items" date="2025-12-31T16:53:10.550" >
+                <step title="Remove d9642e7a-, Success, received at 12/29/2025 20:40:29" date="2025-12-31T16:53:10.621" /><!-- duration: 3ms -->
+              </step><!-- duration: 79ms -->
+            </step><!-- duration: 79654ms -->
+          </step><!-- duration: 79832ms -->
+          <step title="Cleaning up temp files" date="2025-12-31T16:53:10.730" /><!-- duration: 5ms -->
+          <step title="Cleaning up temp files" date="2025-12-31T16:53:10.739" /><!-- duration: 510ms -->
+          <step title="Reloading status file with latest updates" date="2025-12-31T16:53:11.284" >
+            <step title="WebHooksManager.PublishEventAsync: PostDeployment" date="2025-12-31T16:53:11.289" /><!-- duration: 59ms -->
+          </step><!-- duration: 67ms -->
+          <step title="Cleaning up temporary deployment - fetch deployment was successful" date="2025-12-31T16:53:11.360" /><!-- duration: 4ms -->
+        </step><!-- duration: 80689ms -->
+      </step><!-- duration: 82935ms -->

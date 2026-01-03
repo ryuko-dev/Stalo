@@ -12,6 +12,7 @@ import Home from './pages/Home';
 import Projects from './pages/Projects';
 import GanttChart from './pages/GanttChart';
 import Glidepath from './pages/Glidepath';
+import Payments from './pages/Payments';
 import Positions from './pages/Positions';
 import Resources from './pages/Resources';
 import PayrollAllocation from './pages/PayrollAllocation';
@@ -105,6 +106,9 @@ function AppContent() {
               {getPagePermissions('glidepath').canView && (
                 <Button component={Link} to="/glidepath" color="inherit" sx={{ textTransform: 'none' }}>Glidepath</Button>
               )}
+              {getPagePermissions('payments').canView && (
+                <Button component={Link} to="/payments" color="inherit" sx={{ textTransform: 'none' }}>Payments</Button>
+              )}
               {canAccessSettings() && (
                 <Button component={Link} to="/settings" color="inherit" sx={{ textTransform: 'none' }}>Settings</Button>
               )}
@@ -184,6 +188,7 @@ function AppContent() {
           <Route path="/projects" element={<ProtectedRoute page="projects"><Projects /></ProtectedRoute>} />
           <Route path="/gantt" element={<ProtectedRoute page="gantt"><GanttChart selectedDate={selectedDate} /></ProtectedRoute>} />
           <Route path="/glidepath" element={<ProtectedRoute page="glidepath"><Glidepath /></ProtectedRoute>} />
+          <Route path="/payments" element={<ProtectedRoute page="payments"><Payments /></ProtectedRoute>} />
           <Route path="/positions" element={<ProtectedRoute page="positions"><Positions /></ProtectedRoute>} />
           <Route path="/resources" element={<ProtectedRoute page="resources"><Resources /></ProtectedRoute>} />
           <Route path="/payroll-allocation" element={<ProtectedRoute page="payroll"><PayrollAllocation selectedDate={selectedDate} /></ProtectedRoute>} />

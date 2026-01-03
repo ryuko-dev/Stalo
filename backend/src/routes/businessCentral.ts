@@ -435,4 +435,190 @@ router.get('/job-task-lines', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/bc/personnel-expenses
+ * Fetch grouped personnel expenses
+ * Query params:
+ *   - showAll: if true, return all records (default: filter by unpaid, blank Payment_Reference, and exclude Draft status)
+ */
+router.get('/personnel-expenses', async (req: Request, res: Response) => {
+  try {
+    const showAll = req.query.showAll === 'true';
+    const bcClient = await createBCClient();
+    
+    // Don't use $select or $filter - just get all data
+    const response = await bcClient.get('/Grouped_Personnel_Expense_Excel');
+
+    const allExpenses = (response.data as any).value || [];
+    
+    let expenses;
+    if (showAll) {
+      // Return all records
+      expenses = allExpenses;
+    } else {
+      // Filter unpaid, blank Payment_Reference, and exclude Draft status
+      expenses = allExpenses.filter((exp: any) => 
+        exp.Paid === false && 
+        (!exp.Payment_Reference || exp.Payment_Reference.trim() === '') &&
+        exp.Status !== 'Draft'
+      );
+    }
+    
+    res.json({ expenses, count: expenses.length });
+  } catch (error: any) {
+    console.error('Error fetching personnel expenses from BC:', error.response?.data || error.message);
+    res.status(error.response?.status || 500).json({ 
+      error: 'Failed to fetch personnel expenses',
+      details: error.response?.data || error.message 
+    });
+  }
+});
+
+/**
+ * GET /api/bc/prepayments
+ * Fetch prepayment information with payment date
+ * Query params: showAll=true to show all prepayments (default: only with payment date)
+ */
+router.get('/prepayments', async (req: Request, res: Response) => {
+  try {
+    const bcClient = await createBCClient();
+    const showAll = req.query.showAll === 'true';
+    
+    // Get all data without filters - let OData return everything
+    const response = await bcClient.get('/Prepayment_Information_Excel');
+
+    const allPrepayments = (response.data as any).value || [];
+    
+    // Filter based on showAll parameter
+    let prepayments;
+    if (showAll) {
+      // Show all prepayments
+      prepayments = allPrepayments;
+    } else {
+      // Show only prepayments with payment date
+      prepayments = allPrepayments.filter((prep: any) => {
+        return prep.Payment_Date && 
+               prep.Payment_Date.trim() !== '' && 
+               !prep.Payment_Date.startsWith('0001-01-01') &&
+               !prep.Payment_Date.startsWith('1900-01-01');
+      });
+    }
+    
+    // Ensure Payment_Method is included in the response
+    const enrichedPrepayments = prepayments.map((prep: any) => ({
+      ...prep,
+      Payment_Method: prep.Payment_Method || ''
+    }));
+    
+    res.json({ prepayments: enrichedPrepayments, count: enrichedPrepayments.length });
+  } catch (error: any) {
+    console.error('Error fetching prepayments from BC:', error.response?.data || error.message);
+    res.status(error.response?.status || 500).json({ 
+      error: 'Failed to fetch prepayments',
+      details: error.response?.data || error.message 
+    });
+  }
+});
+
+/**
+ * GET /api/bc/vendors
+ * Fetch vendor list from workflowVendors
+ */
+router.get('/vendors', async (req: Request, res: Response) => {
+  try {
+    const bcClient = await createBCClient();
+    
+    const response = await bcClient.get('/workflowVendors');
+    const vendors = (response.data as any).value || [];
+    
+    res.json({ vendors, count: vendors.length });
+  } catch (error: any) {
+    console.error('Error fetching vendors from BC:', error.response?.data || error.message);
+    res.status(error.response?.status || 500).json({ 
+      error: 'Failed to fetch vendors',
+      details: error.response?.data || error.message 
+    });
+  }
+});
+
+router.get('/purchase-invoices', async (req: Request, res: Response) => {
+  try {
+    const bcClient = await createBCClient();
+    
+    // Fetch posted purchase invoices
+    const invoiceResponse = await bcClient.get('/Posted_Purchase_Invoice_Excel');
+    const invoices = (invoiceResponse.data as any).value || [];
+    
+    // Try to fetch vendor ledger entries, but continue if it fails
+    let ledgerMap = new Map();
+    try {
+      const ledgerResponse = await bcClient.get('/Vendor_Ledger_Entries_Excel', {
+        params: {
+          $filter: "Document_Type eq 'Invoice'"
+        }
+      });
+      const ledgerEntries = (ledgerResponse.data as any).value || [];
+      
+      // Create a map of Document_No -> ledger entry for quick lookup
+      ledgerEntries.forEach((entry: any) => {
+        if (entry.Document_No && !ledgerMap.has(entry.Document_No)) {
+          ledgerMap.set(entry.Document_No, {
+            Open: entry.Open,
+            Original_Amount: entry.Original_Amount || 0
+          });
+        }
+      });
+    } catch (ledgerError: any) {
+      console.warn('Could not fetch vendor ledger entries, using invoice data only:', ledgerError.message);
+    }
+    
+    // Merge the data
+    const enrichedInvoices = invoices.map((invoice: any) => {
+      const ledgerData = ledgerMap.get(invoice.No);
+      
+      if (ledgerData) {
+        return {
+          ...invoice,
+          Closed: !ledgerData.Open, // Open = false means Closed = true
+          Amount: Math.abs(ledgerData.Original_Amount), // Use Original_Amount from ledger
+          Payment_Method_Code: invoice.Payment_Method_Code || '' // Include payment method code
+        };
+      } else {
+        // Fallback to invoice data if ledger entry not found
+        return {
+          ...invoice,
+          Closed: invoice.Closed || false, // Use existing Closed field or default to false
+          Amount: invoice.Amount || 0, // Use existing Amount
+          Payment_Method_Code: invoice.Payment_Method_Code || '' // Include payment method code
+        };
+      }
+    });
+    
+    res.json({ invoices: enrichedInvoices, count: enrichedInvoices.length });
+  } catch (error: any) {
+    console.error('Error fetching purchase invoices from BC:', error.response?.data || error.message);
+    res.status(error.response?.status || 500).json({ 
+      error: 'Failed to fetch purchase invoices',
+      details: error.response?.data || error.message 
+    });
+  }
+});
+
+router.get('/salary-payments', async (req: Request, res: Response) => {
+  try {
+    const bcClient = await createBCClient();
+    
+    const response = await bcClient.get('/SalariesList');
+    const salaries = (response.data as any).value || [];
+    
+    res.json({ salaries, count: salaries.length });
+  } catch (error: any) {
+    console.error('Error fetching salary payments from BC:', error.response?.data || error.message);
+    res.status(error.response?.status || 500).json({ 
+      error: 'Failed to fetch salary payments',
+      details: error.response?.data || error.message 
+    });
+  }
+});
+
 export default router;

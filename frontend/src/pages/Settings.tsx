@@ -381,6 +381,13 @@ export default function Settings() {
                         <TableCell align="center">✅ Full Access</TableCell>
                       </TableRow>
                       <TableRow sx={{ backgroundColor: '#fafafa' }}>
+                        <TableCell><strong>Payments</strong></TableCell>
+                        <TableCell align="center">✅ Full Access</TableCell>
+                        <TableCell align="center">👁️ View Only</TableCell>
+                        <TableCell align="center">❌ No Access</TableCell>
+                        <TableCell align="center">👁️ View Only</TableCell>
+                      </TableRow>
+                      <TableRow>
                         <TableCell><strong>Settings</strong></TableCell>
                         <TableCell align="center">✅ Full Access</TableCell>
                         <TableCell align="center">❌ No Access</TableCell>

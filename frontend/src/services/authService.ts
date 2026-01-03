@@ -56,6 +56,7 @@ export const loginScopes = [
 ];
 
 let msalInstance: PublicClientApplication | null = null;
+let msalInitPromise: Promise<PublicClientApplication> | null = null;
 
 /**
  * Initialize MSAL instance (singleton pattern)
@@ -67,28 +68,45 @@ let msalInstance: PublicClientApplication | null = null;
 export async function initMsal(): Promise<PublicClientApplication> {
   if (msalInstance) return msalInstance;
 
-  if (!msalConfig.auth.clientId) {
-    console.warn('MSAL Client ID not configured. OAuth2 authentication disabled. Please configure VITE_MSAL_CLIENT_ID in .env.local to enable.');
-  }
+  // If initialization is already in progress, wait for it
+  if (msalInitPromise) return msalInitPromise;
 
-  msalInstance = new PublicClientApplication(msalConfig);
+  msalInitPromise = (async () => {
+    try {
+      if (!msalConfig.auth.clientId) {
+        console.warn('MSAL Client ID not configured. OAuth2 authentication disabled. Please configure VITE_MSAL_CLIENT_ID in .env.local to enable.');
+      }
 
-  // Await the new async initialize() method if available
-  if (typeof msalInstance.initialize === 'function') {
-    await msalInstance.initialize();
-  }
+      const instance = new PublicClientApplication(msalConfig);
 
-  return msalInstance;
+      // Await the new async initialize() method if available
+      if (typeof instance.initialize === 'function') {
+        await instance.initialize();
+      }
+
+      msalInstance = instance;
+      msalInitPromise = null; // Clear promise after successful initialization
+      return msalInstance;
+    } catch (error) {
+      // Clear promise on error so next call can retry
+      msalInitPromise = null;
+      msalInstance = null;
+      throw error;
+    }
+  })();
+
+  return msalInitPromise;
 }
 
 /**
  * Get the MSAL instance
  */
 export async function getMsalInstance(): Promise<PublicClientApplication> {
-  if (!msalInstance) {
-    return await initMsal();
+  if (msalInstance) {
+    return msalInstance;
   }
-  return msalInstance;
+  // If not initialized, start initialization and wait for it
+  return await initMsal();
 }
 
 /**

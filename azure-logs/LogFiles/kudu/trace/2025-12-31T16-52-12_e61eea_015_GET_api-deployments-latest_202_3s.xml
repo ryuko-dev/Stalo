@@ -1,0 +1,11 @@
+<step title="Incoming Request" date="2025-12-31T16:52:12.417" instance="e61eea" url="/api/deployments/latest?deployer=OneDeploy&amp;time=2025-12-31_16-51-12Z" method="GET" type="request" pid="831,1,18" Host="stalo-h5d6djg6duahfkc9.scm.canadacentral-01.azurewebsites.net" User-Agent="GITHUBACTIONS_DeployWebAppToAzure_c93438f44cfe02a2d7f1039cc18d926870b70918f71898f226240c72a8aed262" Authorization="Bea..." Content-Type="application/json; charset=utf-8" Cookie="ARRAffinity=e61eeacfb9a4538c3dd42ace45dcab4656f932e6e6ebe448c81386615ae5113e;Path=/;HttpOnly;Secure;Domain=stalo-h5d6djg6duahfkc9.scm.canadacentral-01.azurewebsites.net; ARRAffinitySameSite=e61eeacfb9a4538c3dd42ace45dcab4656f932e6e6ebe448c81386615ae5113e;Path=/;HttpOnly;SameSite=None;Secure;Domain=stalo-h5d6djg6duahfkc9.scm.canadacentral-01.azurewebsites.net" Content-Length="0" X-ARR-LOG-ID="c59610af-a11e-4c7b-9a3b-384d98e4e849" CLIENT-IP="52.154.131.96:56320" X-SITE-DEPLOYMENT-ID="stalo" WAS-DEFAULT-HOSTNAME="stalo-h5d6djg6duahfkc9.scm.canadacentral-01.azurewebsites.net" X-Forwarded-Proto="https" X-AppService-Proto="https" X-Forwarded-TlsVersion="1.3" X-WAWS-Unencoded-URL="/api/deployments/latest?deployer=OneDeploy&amp;time=2025-12-31_16-51-12Z" X-Client-IP="52.154.131.96" X-Client-Port="56320" >
+  <step title="Cleanup Xml Logs" date="2025-12-31T16:52:12.429" >
+    <step title="Cleanup Infos" date="2025-12-31T16:52:12.568" totalFiles="330" totalCleanup="170" /><!-- duration: 103ms -->
+  </step><!-- duration: 289ms -->
+  <step title="DeploymentService.GetResult" date="2025-12-31T16:52:12.745" >
+    <step title="DeploymentService.GetLatestDeployment" date="2025-12-31T16:52:12.756" >
+      <step title="DeploymentManager.GetResults" date="2025-12-31T16:52:12.761" /><!-- duration: 2451ms -->
+    </step><!-- duration: 2498ms -->
+  </step><!-- duration: 2525ms -->
+  <step title="Outgoing response" date="2025-12-31T16:52:15.314" type="response" statusCode="202" statusText="Accepted" /><!-- duration: 40ms -->
+</step><!-- duration: 2959ms -->

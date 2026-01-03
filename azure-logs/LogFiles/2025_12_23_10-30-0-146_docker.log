@@ -1,0 +1,75 @@
+2025-12-23T17:09:12.1878574Z Container start method called.
+2025-12-23T17:09:12.2049789Z Establishing network.
+2025-12-23T17:09:12.2056901Z Pulling image: appsvc/node:20-lts_20251016.4.tuxprod.
+2025-12-23T17:09:12.3870608Z Container is starting.
+2025-12-23T17:09:12.3873137Z Establishing user namespace if not established already.
+2025-12-23T17:09:12.3874656Z Establishing network if not established already.
+2025-12-23T17:09:12.3876106Z Mounting volumes.
+2025-12-23T17:09:12.3996506Z Nested mountpoint 
+2025-12-23T17:09:12.4091085Z Nested mountpoint volatile/logs
+2025-12-23T17:09:12.4193297Z Nested mountpoint 
+2025-12-23T17:09:12.4415680Z Nested mountpoint 
+2025-12-23T17:09:12.4433022Z Nested mountpoint 
+2025-12-23T17:09:12.5728134Z Creating container.
+2025-12-23T17:09:12.5732662Z Creating pipes for streaming container io.
+2025-12-23T17:09:12.5753097Z Creating stdout named pipe at /podr/container/pipe/f750ba8e25f8_stalo/stdout_3a7d20cf7f2745f798abfc2432ddc32a.
+2025-12-23T17:09:12.5760300Z Successfully created stdout named pipe at: /podr/container/pipe/f750ba8e25f8_stalo/stdout_3a7d20cf7f2745f798abfc2432ddc32a.
+2025-12-23T17:09:12.5768356Z Opening named pipe /podr/container/pipe/f750ba8e25f8_stalo/stdout_3a7d20cf7f2745f798abfc2432ddc32a for reading in non-blocking mode.
+2025-12-23T17:09:12.5769866Z Successfully opened named pipe: /podr/container/pipe/f750ba8e25f8_stalo/stdout_3a7d20cf7f2745f798abfc2432ddc32a.
+2025-12-23T17:09:12.5802738Z Successfully removed non-blocking flag from /podr/container/pipe/f750ba8e25f8_stalo/stdout_3a7d20cf7f2745f798abfc2432ddc32a.
+2025-12-23T17:09:12.5805327Z Creating stderr named pipe at /podr/container/pipe/f750ba8e25f8_stalo/stderr_4c0184a1551e4c468bdfd34f567870f3.
+2025-12-23T17:09:12.5809226Z Successfully created stderr named pipe at: /podr/container/pipe/f750ba8e25f8_stalo/stderr_4c0184a1551e4c468bdfd34f567870f3.
+2025-12-23T17:09:12.5812325Z Opening named pipe /podr/container/pipe/f750ba8e25f8_stalo/stderr_4c0184a1551e4c468bdfd34f567870f3 for reading in non-blocking mode.
+2025-12-23T17:09:12.5813896Z Successfully opened named pipe: /podr/container/pipe/f750ba8e25f8_stalo/stderr_4c0184a1551e4c468bdfd34f567870f3.
+2025-12-23T17:09:12.5816921Z Successfully removed non-blocking flag from /podr/container/pipe/f750ba8e25f8_stalo/stderr_4c0184a1551e4c468bdfd34f567870f3.
+2025-12-23T17:09:12.5831459Z Creating container with image: appsvc/node:20-lts_20251016.4.tuxprod from registry: 10.1.0.4:13209 and fully qualified image name: 10.1.0.4:13209/appsvc/node:20-lts_20251016.4.tuxprod
+2025-12-23T17:09:13.1993474Z Starting container: f750ba8e25f8_stalo.
+2025-12-23T17:09:13.2799453Z Starting watchers and probes.
+2025-12-23T17:09:13.2962572Z Starting metrics collection.
+2025-12-23T17:09:13.3028087Z Container is running.
+2025-12-23T17:09:13.4995336Z Container start method finished after 1309 ms.
+2025-12-23T17:09:29.5696898Z Site startup probe succeeded after 16.0496845 seconds.
+2025-12-23T17:09:29.6937795Z Site is running with deployment version: 309c15b6-eaa9-46c7-8af8-7aad57ea20c7
+2025-12-23T17:09:29.6944532Z Site started.
+2025-12-23T17:09:29.7789645Z Site is running with patch version NODE 20.19.5
+2025-12-23T20:23:03.8056642Z Container start method called.
+2025-12-23T20:23:03.8058693Z Establishing network.
+2025-12-23T20:23:03.8059809Z Pulling image: appsvc/node:20-lts_20251016.4.tuxprod.
+2025-12-23T20:23:04.2669987Z Container is starting.
+2025-12-23T20:23:04.2672304Z Establishing user namespace if not established already.
+2025-12-23T20:23:04.2673348Z Establishing network if not established already.
+2025-12-23T20:23:04.2675923Z Mounting volumes.
+2025-12-23T20:23:04.2677691Z Nested mountpoint 
+2025-12-23T20:23:04.2723910Z Nested mountpoint volatile/logs
+2025-12-23T20:23:04.2769308Z Nested mountpoint 
+2025-12-23T20:23:04.2785364Z Nested mountpoint 
+2025-12-23T20:23:04.2835973Z Nested mountpoint 
+2025-12-23T20:23:04.4631048Z Creating container.
+2025-12-23T20:23:04.4645151Z Creating pipes for streaming container io.
+2025-12-23T20:23:04.4647243Z Creating stdout named pipe at /podr/container/pipe/519c3b858890_stalo/stdout_ab94d9ee96a34c459e3d9744fc67290f.
+2025-12-23T20:23:04.4677199Z Successfully created stdout named pipe at: /podr/container/pipe/519c3b858890_stalo/stdout_ab94d9ee96a34c459e3d9744fc67290f.
+2025-12-23T20:23:04.4678633Z Opening named pipe /podr/container/pipe/519c3b858890_stalo/stdout_ab94d9ee96a34c459e3d9744fc67290f for reading in non-blocking mode.
+2025-12-23T20:23:04.4680266Z Successfully opened named pipe: /podr/container/pipe/519c3b858890_stalo/stdout_ab94d9ee96a34c459e3d9744fc67290f.
+2025-12-23T20:23:04.4681517Z Successfully removed non-blocking flag from /podr/container/pipe/519c3b858890_stalo/stdout_ab94d9ee96a34c459e3d9744fc67290f.
+2025-12-23T20:23:04.4682783Z Creating stderr named pipe at /podr/container/pipe/519c3b858890_stalo/stderr_9b043fdcc73e4774a4d81f9ae0085048.
+2025-12-23T20:23:04.4684582Z Successfully created stderr named pipe at: /podr/container/pipe/519c3b858890_stalo/stderr_9b043fdcc73e4774a4d81f9ae0085048.
+2025-12-23T20:23:04.4685727Z Opening named pipe /podr/container/pipe/519c3b858890_stalo/stderr_9b043fdcc73e4774a4d81f9ae0085048 for reading in non-blocking mode.
+2025-12-23T20:23:04.4687129Z Successfully opened named pipe: /podr/container/pipe/519c3b858890_stalo/stderr_9b043fdcc73e4774a4d81f9ae0085048.
+2025-12-23T20:23:04.4688376Z Successfully removed non-blocking flag from /podr/container/pipe/519c3b858890_stalo/stderr_9b043fdcc73e4774a4d81f9ae0085048.
+2025-12-23T20:23:04.4689742Z Creating container with image: appsvc/node:20-lts_20251016.4.tuxprod from registry: 10.1.0.4:13209 and fully qualified image name: 10.1.0.4:13209/appsvc/node:20-lts_20251016.4.tuxprod
+2025-12-23T20:23:05.4876014Z Starting container: 519c3b858890_stalo.
+2025-12-23T20:23:05.5076175Z Starting watchers and probes.
+2025-12-23T20:23:05.5093096Z Starting metrics collection.
+2025-12-23T20:23:05.5097407Z Container is running.
+2025-12-23T20:23:05.5636752Z Container start method finished after 1757 ms.
+2025-12-23T20:23:24.6189092Z Site startup probe succeeded after 19.0419325 seconds.
+2025-12-23T20:23:24.7349200Z Site is running with deployment version: a03fa457-3e5b-45f8-8ee7-e4c8ec8c470e
+2025-12-23T20:23:24.7361298Z Site started.
+2025-12-23T20:23:24.7366091Z Site is running with patch version NODE 20.19.5
+2025-12-23T20:23:44.9159250Z Container is terminating. Grace period: 5 seconds.
+2025-12-23T20:23:44.9974379Z Stop and delete container. Retry count = 0
+2025-12-23T20:23:44.9992549Z Stopping container: f750ba8e25f8_stalo.
+2025-12-23T20:23:50.0789636Z Deleting container: f750ba8e25f8_stalo. Retry count = 0
+2025-12-23T20:23:52.3649241Z Container spec TerminationMessagePolicy  path 
+2025-12-23T20:23:52.3732625Z Container is terminated. Total time elapsed: 7455 ms.
+2025-12-23T20:23:52.3790300Z Site: stalo stopped.

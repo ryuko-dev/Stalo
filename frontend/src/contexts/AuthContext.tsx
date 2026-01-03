@@ -89,12 +89,32 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // Initialize MSAL on mount and check for existing session
   useEffect(() => {
+    let isComponentMounted = true;
+    let initStarted = false;
+    
     const initializeAuth = async () => {
+      // Prevent multiple simultaneous initialization attempts
+      if (initStarted) {
+        console.log('Initialization already in progress, skipping duplicate call');
+        return;
+      }
+      
+      initStarted = true;
+      
       try {
         await initMsal();
         
+        // Only proceed if component is still mounted after init
+        if (!isComponentMounted) {
+          console.log('Component unmounted during MSAL init, skipping state updates');
+          return;
+        }
+        
         // Handle redirect promise first (if returning from Microsoft login)
         const redirectResponse = await handleRedirectPromise();
+        
+        // Only update state if component is still mounted
+        if (!isComponentMounted) return;
         
         if (redirectResponse && redirectResponse.account) {
           // User just completed redirect login
@@ -115,6 +135,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           const authenticated = await msalIsAuthenticated();
           const account = await getCurrentAccount();
           
+          // Only update state if component is still mounted
+          if (!isComponentMounted) return;
+          
           setIsAuthenticated(authenticated);
           setUser(account);
           
@@ -132,12 +155,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
       } catch (err: any) {
         console.error('MSAL initialization error:', err);
-        setError(`Auth setup: ${err.message || 'Configuration missing'}`);
+        if (isComponentMounted) {
+          setError(`Auth setup: ${err.message || 'Configuration missing'}`);
+        }
       } finally {
-        setIsLoading(false);
+        if (isComponentMounted) {
+          setIsLoading(false);
+        }
       }
     };
+    
     initializeAuth();
+    
+    // Cleanup function
+    return () => {
+      isComponentMounted = false;
+    };
   }, []);
 
   const handleLogin = async () => {

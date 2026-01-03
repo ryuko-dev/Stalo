@@ -1,0 +1,11 @@
+<step title="Incoming Request" date="2025-12-31T17:27:19.757" instance="e61eea" url="/api/deployments/latest?deployer=OneDeploy&amp;time=2025-12-31_17-26-12Z" method="GET" type="request" pid="831,1,26" Host="stalo-h5d6djg6duahfkc9.scm.canadacentral-01.azurewebsites.net" User-Agent="GITHUBACTIONS_DeployWebAppToAzure_c93438f44cfe02a2d7f1039cc18d926870b70918f71898f226240c72a8aed262" Authorization="Bea..." Content-Type="application/json; charset=utf-8" Cookie="ARRAffinity=e61eeacfb9a4538c3dd42ace45dcab4656f932e6e6ebe448c81386615ae5113e;Path=/;HttpOnly;Secure;Domain=stalo-h5d6djg6duahfkc9.scm.canadacentral-01.azurewebsites.net; ARRAffinitySameSite=e61eeacfb9a4538c3dd42ace45dcab4656f932e6e6ebe448c81386615ae5113e;Path=/;HttpOnly;SameSite=None;Secure;Domain=stalo-h5d6djg6duahfkc9.scm.canadacentral-01.azurewebsites.net" Content-Length="0" X-ARR-LOG-ID="b6817fcf-441a-4acb-a648-2fa60abcc45e" CLIENT-IP="135.232.177.196:57370" X-SITE-DEPLOYMENT-ID="stalo" WAS-DEFAULT-HOSTNAME="stalo-h5d6djg6duahfkc9.scm.canadacentral-01.azurewebsites.net" X-Forwarded-Proto="https" X-AppService-Proto="https" X-Forwarded-TlsVersion="1.3" X-WAWS-Unencoded-URL="/api/deployments/latest?deployer=OneDeploy&amp;time=2025-12-31_17-26-12Z" X-Client-IP="135.232.177.196" X-Client-Port="57370" >
+  <step title="Cleanup Xml Logs" date="2025-12-31T17:27:19.770" >
+    <step title="Cleanup Infos" date="2025-12-31T17:27:19.879" totalFiles="426" totalCleanup="266" /><!-- duration: 36ms -->
+  </step><!-- duration: 161ms -->
+  <step title="DeploymentService.GetResult" date="2025-12-31T17:27:20.073" >
+    <step title="DeploymentService.GetLatestDeployment" date="2025-12-31T17:27:20.097" >
+      <step title="DeploymentManager.GetResults" date="2025-12-31T17:27:20.119" /><!-- duration: 1931ms -->
+    </step><!-- duration: 1987ms -->
+  </step><!-- duration: 2043ms -->
+  <step title="Outgoing response" date="2025-12-31T17:27:22.146" type="response" statusCode="202" statusText="Accepted" /><!-- duration: 13ms -->
+</step><!-- duration: 2441ms -->

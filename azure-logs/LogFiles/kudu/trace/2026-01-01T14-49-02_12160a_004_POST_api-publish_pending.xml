@@ -1,0 +1,21 @@
+<step title="Incoming Request" date="2026-01-01T14:49:02.315" instance="12160a" url="/api/publish?async=true&amp;deployer=GITHUB_ONE_DEPLOY&amp;type=zip&amp;message=%7B%22type%22%3A%22deployment%22%2C%22sha%22%3A%2284e83280a915572845ed1bf3d4b56e1e33a3f4ca%22%2C%22repoName%22%3A%22ryuko-dev%2FStalo%22%2C%22actor%22%3A%22ryuko-dev%22%2C%22slotName%22%3A%22production%22%2C%22commitMessage%22%3A%22Add%20domain-based%20access%20restriction%22%7D" method="POST" type="request" pid="831,1,27" Host="stalo-h5d6djg6duahfkc9.scm.canadacentral-01.azurewebsites.net" User-Agent="GITHUBACTIONS_DeployWebAppToAzure_be4d951cec5033ad0749adece734372be7817cd889e38543b3e816b49d7850dd" Authorization="Bas..." Content-Type="application/octet-stream" Cookie="ARRAffinity=12160a5d04dfb4a3dde900bbd031e61d3b69735d64e59bf8c8cb0975e6f1ead6;Path=/;HttpOnly;Secure;Domain=stalo-h5d6djg6duahfkc9.scm.canadacentral-01.azurewebsites.net; ARRAffinitySameSite=12160a5d04dfb4a3dde900bbd031e61d3b69735d64e59bf8c8cb0975e6f1ead6;Path=/;HttpOnly;SameSite=None;Secure;Domain=stalo-h5d6djg6duahfkc9.scm.canadacentral-01.azurewebsites.net" Transfer-Encoding="chunked" X-ARR-LOG-ID="84e8daa6-2d5e-4276-933b-2a13b85e3e60" CLIENT-IP="135.232.200.70:47105" X-SITE-DEPLOYMENT-ID="stalo" WAS-DEFAULT-HOSTNAME="stalo-h5d6djg6duahfkc9.scm.canadacentral-01.azurewebsites.net" X-Forwarded-Proto="https" X-AppService-Proto="https" X-Forwarded-TlsVersion="1.3" X-WAWS-Unencoded-URL="/api/publish?async=true&amp;deployer=GITHUB_ONE_DEPLOY&amp;type=zip&amp;message=%7B%22type%22%3A%22deployment%22%2C%22sha%22%3A%2284e83280a915572845ed1bf3d4b56e1e33a3f4ca%22%2C%22repoName%22%3A%22ryuko-dev%2FStalo%22%2C%22actor%22%3A%22ryuko-dev%22%2C%22slotName%22%3A%22production%22%2C%22commitMessage%22%3A%22Add%20domain-based%20access%20restriction%22%7D" X-Client-IP="135.232.200.70" X-Client-Port="47105" >
+  <step title="Cleanup Xml Logs" date="2026-01-01T14:49:02.320" >
+    <step title="Cleanup Infos" date="2026-01-01T14:49:02.350" totalFiles="533" totalCleanup="373" /><!-- duration: 8ms -->
+  </step><!-- duration: 48ms -->
+  <step title="OneDeploy" date="2026-01-01T14:49:02.576" >
+    <step title="None repository commit" date="2026-01-01T14:49:02.603" >
+      <step title="Commit id: ed6db1fb-176a-4cba-915a-ad476ef68e1b" date="2026-01-01T14:49:02.608" Message="N/A" AuthorName="N/A" AuthorEmail="N/A" /><!-- duration: 6ms -->
+    </step><!-- duration: 16ms -->
+    <step title="Starting PushDeployAsync" date="2026-01-01T14:49:02.625" /><!-- duration: 5ms -->
+    <step title="Removing node_modules symlink" date="2026-01-01T14:49:02.654" >
+      <step title="Removing _del_node_modules symlink" date="2026-01-01T14:49:02.840" >
+        <step title="Writing artifact to /tmp/zipdeploy/30d55266-57a0-4617-bd8d-ce531db587e3.zip" date="2026-01-01T14:49:02.860" >
+          <step title="Writing multipart request body to /tmp/zipdeploy/30d55266-57a0-4617-bd8d-ce531db587e3.zip" date="2026-01-01T14:49:02.867" /><!-- duration: 6ms -->
+        </step><!-- duration: 756ms -->
+        <step title="Start deployment in the background" date="2026-01-01T14:49:03.637" >
+          <step title="Acquiring Deployment Lock" date="2026-01-01T14:49:03.651" /><!-- duration: 6ms -->
+          <step title="Acquired Deployment Lock" date="2026-01-01T14:49:04.049" /><!-- duration: 5ms -->
+        </step><!-- duration: 517ms -->
+      </step><!-- duration: 1326ms -->
+      <step title="Outgoing response" date="2026-01-01T14:49:04.175" type="response" statusCode="202" statusText="Accepted" /><!-- duration: 4ms -->
+    </step><!-- duration: 1530ms -->
