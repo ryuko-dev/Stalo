@@ -225,6 +225,21 @@ export default function Payments() {
     }
   };
 
+  const calculateAging = (requestDateString: string): number | string => {
+    if (!requestDateString || requestDateString === '0001-01-01T00:00:00' || requestDateString === '1900-01-01T00:00:00') {
+      return '-';
+    }
+    try {
+      const requestDate = new Date(requestDateString);
+      const today = new Date();
+      const diffTime = today.getTime() - requestDate.getTime();
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      return diffDays;
+    } catch {
+      return '-';
+    }
+  };
+
   const handleContextMenu = (event: React.MouseEvent, expense: PersonnelExpense) => {
     event.preventDefault();
     setContextMenu(
@@ -696,12 +711,13 @@ export default function Payments() {
                   <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Currency</TableCell>
                   <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>Amount</TableCell>
                   <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Status</TableCell>
+                  <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>Aging</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {filteredPersonnelExpenses.length === 0 && !loading && (
                   <TableRow>
-                    <TableCell colSpan={9} align="center">
+                    <TableCell colSpan={10} align="center">
                       <Typography variant="body2" color="text.secondary">
                         {searchTerm ? 'No results found' : 'No personnel expenses found'}
                       </Typography>
@@ -734,6 +750,11 @@ export default function Payments() {
                       <TableCell>
                         <Chip label={status.label} color={status.color} size="small" />
                       </TableCell>
+                      <TableCell align="right">
+                        {typeof calculateAging(expense.Approval_Requested_By_Datetime) === 'number' 
+                          ? `${calculateAging(expense.Approval_Requested_By_Datetime)} days`
+                          : calculateAging(expense.Approval_Requested_By_Datetime)}
+                      </TableCell>
                     </TableRow>
                   );
                 })}
@@ -765,6 +786,7 @@ export default function Payments() {
                         <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Currency</TableCell>
                         <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>Amount</TableCell>
                         <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Status</TableCell>
+                        <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>Aging</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -788,6 +810,11 @@ export default function Payments() {
                             </TableCell>
                             <TableCell>
                               <Chip label={status.label} color={status.color} size="small" />
+                            </TableCell>
+                            <TableCell align="right">
+                              {typeof calculateAging(prepayment.Advance_Submission_Date) === 'number' 
+                                ? `${calculateAging(prepayment.Advance_Submission_Date)} days`
+                                : calculateAging(prepayment.Advance_Submission_Date)}
                             </TableCell>
                           </TableRow>
                         );
@@ -824,6 +851,7 @@ export default function Payments() {
                         <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Currency</TableCell>
                         <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>Amount</TableCell>
                         <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Closed</TableCell>
+                        <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>Aging</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -848,6 +876,11 @@ export default function Payments() {
                             {invoice.Amount ? formatCurrency(invoice.Amount, invoice.Currency_Code) : '-'}
                           </TableCell>
                           <TableCell>{invoice.Closed ? 'Yes' : 'No'}</TableCell>
+                          <TableCell align="right">
+                            {typeof calculateAging(invoice.Posting_Date) === 'number' 
+                              ? `${calculateAging(invoice.Posting_Date)} days`
+                              : calculateAging(invoice.Posting_Date)}
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -870,12 +903,13 @@ export default function Payments() {
                   <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Currency</TableCell>
                   <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>Payroll Amount</TableCell>
                   <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Status</TableCell>
+                  <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>Aging</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {salaryPayments.length === 0 && !loading && (
                   <TableRow>
-                    <TableCell colSpan={6} align="center">
+                    <TableCell colSpan={7} align="center">
                       <Typography variant="body2" color="text.secondary">
                         No salary payments found
                       </Typography>
@@ -901,6 +935,11 @@ export default function Payments() {
                       {salary.Payroll_Amount ? formatCurrency(salary.Payroll_Amount, salary.Currency) : '-'}
                     </TableCell>
                     <TableCell>{salary.Status || '-'}</TableCell>
+                    <TableCell align="right">
+                      {typeof calculateAging(salary.Period) === 'number' 
+                        ? `${calculateAging(salary.Period)} days`
+                        : calculateAging(salary.Period)}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

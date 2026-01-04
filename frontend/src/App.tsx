@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Box, AppBar, Toolbar, Container, Select, FormControl, InputLabel, MenuItem, Button, Chip, IconButton, Tooltip } from '@mui/material';
-import { ExitToApp as ExitIcon } from '@mui/icons-material';
+import { Box, AppBar, Toolbar, Container, Select, FormControl, InputLabel, MenuItem, Button, Chip, IconButton, Tooltip, Menu } from '@mui/material';
+import { ExitToApp as ExitIcon, ArrowDropDown as ArrowDropDownIcon, Settings as SettingsIcon, Logout as LogoutIcon } from '@mui/icons-material';
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { getYear, getMonth } from 'date-fns';
@@ -42,6 +42,18 @@ function AppContent() {
   };
 
   const [selectedDate, setSelectedDate] = useState(getSavedDate);
+
+  // State for Staff Allocation dropdown
+  const [staffAllocationAnchorEl, setStaffAllocationAnchorEl] = useState<null | HTMLElement>(null);
+  const isStaffAllocationOpen = Boolean(staffAllocationAnchorEl);
+
+  const handleStaffAllocationClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    setStaffAllocationAnchorEl(event.currentTarget);
+  };
+
+  const handleStaffAllocationClose = () => {
+    setStaffAllocationAnchorEl(null);
+  };
 
   // Save date to localStorage whenever it changes
   const updateSelectedDate = (newDate: Date) => {
@@ -85,14 +97,47 @@ function AppContent() {
               {getPagePermissions('home').canView && (
                 <Button component={Link} to="/" color="inherit" sx={{ textTransform: 'none' }}>Home</Button>
               )}
-              {getPagePermissions('projects').canView && (
-                <Button component={Link} to="/projects" color="inherit" sx={{ textTransform: 'none' }}>Projects</Button>
-              )}
-              {getPagePermissions('positions').canView && (
-                <Button component={Link} to="/positions" color="inherit" sx={{ textTransform: 'none' }}>Positions</Button>
-              )}
-              {getPagePermissions('resources').canView && (
-                <Button component={Link} to="/resources" color="inherit" sx={{ textTransform: 'none' }}>Resources</Button>
+              {/* Staff Allocation Dropdown */}
+              {(getPagePermissions('projects').canView || getPagePermissions('positions').canView || getPagePermissions('resources').canView) && (
+                <>
+                  <Button 
+                    color="inherit" 
+                    sx={{ textTransform: 'none' }}
+                    onClick={handleStaffAllocationClick}
+                    endIcon={<ArrowDropDownIcon />}
+                  >
+                    Staff Allocation
+                  </Button>
+                  <Menu
+                    anchorEl={staffAllocationAnchorEl}
+                    open={isStaffAllocationOpen}
+                    onClose={handleStaffAllocationClose}
+                    anchorOrigin={{
+                      vertical: 'bottom',
+                      horizontal: 'left',
+                    }}
+                    transformOrigin={{
+                      vertical: 'top',
+                      horizontal: 'left',
+                    }}
+                  >
+                    {getPagePermissions('projects').canView && (
+                      <MenuItem component={Link} to="/projects" onClick={handleStaffAllocationClose}>
+                        Projects
+                      </MenuItem>
+                    )}
+                    {getPagePermissions('positions').canView && (
+                      <MenuItem component={Link} to="/positions" onClick={handleStaffAllocationClose}>
+                        Positions
+                      </MenuItem>
+                    )}
+                    {getPagePermissions('resources').canView && (
+                      <MenuItem component={Link} to="/resources" onClick={handleStaffAllocationClose}>
+                        Resources
+                      </MenuItem>
+                    )}
+                  </Menu>
+                </>
               )}
               {getPagePermissions('payroll').canView && (
                 <Button component={Link} to="/payroll-allocation" color="inherit" sx={{ textTransform: 'none' }}>Payroll Allocation</Button>
@@ -108,9 +153,6 @@ function AppContent() {
               )}
               {getPagePermissions('payments').canView && (
                 <Button component={Link} to="/payments" color="inherit" sx={{ textTransform: 'none' }}>Payments</Button>
-              )}
-              {canAccessSettings() && (
-                <Button component={Link} to="/settings" color="inherit" sx={{ textTransform: 'none' }}>Settings</Button>
               )}
             </Box>
 
@@ -171,9 +213,27 @@ function AppContent() {
                 sx={{ color: 'white', borderColor: 'white' }}
                 variant="outlined"
               />
-              <Button color="inherit" onClick={logout} sx={{ textTransform: 'none' }}>
-                Logout
-              </Button>
+              {canAccessSettings() && (
+                <Tooltip title="Settings">
+                  <IconButton 
+                    component={Link} 
+                    to="/settings" 
+                    sx={{ color: 'white' }}
+                    size="small"
+                  >
+                    <SettingsIcon />
+                  </IconButton>
+                </Tooltip>
+              )}
+              <Tooltip title="Logout">
+                <IconButton 
+                  onClick={logout} 
+                  sx={{ color: 'white' }}
+                  size="small"
+                >
+                  <LogoutIcon />
+                </IconButton>
+              </Tooltip>
             </Box>
           </Toolbar>
         </AppBar>

@@ -38,7 +38,33 @@ interface MonthlyAllocationDialog {
 export default function Home({ selectedDate }: HomeProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const months = Array.from({ length: 9 }, (_, i) => addMonths(selectedDate, i));
+  
+  // Quarter filter state (default: 1Q = 3 months)
+  const [quarterFilter, setQuarterFilter] = useState<'1Q' | '2Q' | '3Q'>('1Q');
+  
+  // Calculate number of months based on quarter
+  const getMonthsCount = (quarter: '1Q' | '2Q' | '3Q'): number => {
+    switch (quarter) {
+      case '1Q': return 3;
+      case '2Q': return 6;
+      case '3Q': return 9;
+      default: return 6;
+    }
+  };
+  
+  const months = Array.from({ length: getMonthsCount(quarterFilter) }, (_, i) => addMonths(selectedDate, i));
+
+  // Calculate dynamic month column width based on number of months
+  // Columns will fill the available space
+  const getMonthColumnWidth = (): string => {
+    const monthCount = getMonthsCount(quarterFilter);
+    switch (monthCount) {
+      case 3: return '400px'; // 1Q: wider columns to fill space
+      case 6: return '200px'; // 2Q: medium columns to fill space
+      case 9: return '130px'; // 3Q: narrower columns
+      default: return '200px';
+    }
+  };
 
   // Display mode state: 'percentage' or 'days'
   const [displayMode, setDisplayMode] = useState<'percentage' | 'days'>('percentage');
@@ -105,20 +131,20 @@ export default function Home({ selectedDate }: HomeProps) {
       // Days mode thresholds (17-24 days = optimal, 20 days = 100% equivalent)
       // <85% = <17 days, 85-120% = 17-24 days, >120% = >24 days
       if (displayValue >= 17 && displayValue <= 24) {
-        return '#4caf50'; // professional green (85-120%)
+        return '#a5d6a7'; // pale green (85-120%)
       } else if (displayValue < 17) {
-        return '#ffb300'; // golden yellow (<85%)
+        return '#fff59d'; // pale yellow (<85%)
       } else {
-        return '#f44336'; // professional red (>120%)
+        return '#ef9a9a'; // pale red (>120%)
       }
     } else {
       // Percentage mode thresholds (85-120% = optimal)
       if (displayValue >= 85 && displayValue <= 120) {
-        return '#4caf50'; // professional green
+        return '#a5d6a7'; // pale green
       } else if (displayValue < 85) {
-        return '#ffb300'; // golden yellow
+        return '#fff59d'; // pale yellow
       } else {
-        return '#f44336'; // professional red
+        return '#ef9a9a'; // pale red
       }
     }
   };
@@ -324,18 +350,18 @@ export default function Home({ selectedDate }: HomeProps) {
         sx={{ 
           cursor: isActive ? 'pointer' : 'default',
           backgroundColor: isActive ? (
-            isValidDropTarget === false ? '#ffebee' : (isOver ? 'action.selected' : 'action.hover')
-          ) : 'inherit',
+            isValidDropTarget === false ? '#ffebee' : (isOver ? '#e3f2fd' : 'white')
+          ) : 'white',
           '&:hover': isActive ? { 
-            backgroundColor: isValidDropTarget === false ? '#ffebee' : (isOver ? 'action.selected' : 'action.hover') 
+            backgroundColor: isValidDropTarget === false ? '#ffebee' : (isOver ? '#e3f2fd' : '#f5f5f5') 
           } : {},
           p: 0.5,
-          width: '100px',
-          minWidth: '100px',
+          width: getMonthColumnWidth(),
+          minWidth: getMonthColumnWidth(),
           height: '16px',
           position: 'relative',
           overflow: 'hidden',
-          border: '1px solid white'
+          border: '1px solid #e0e0e0'
         }}
       >
         {children}
@@ -598,7 +624,7 @@ export default function Home({ selectedDate }: HomeProps) {
       
       return true;
     });
-  }, [resources, months, selectedProjectFilter, allocations]);
+  }, [resources, months, selectedProjectFilter, allocations, quarterFilter]);
 
   // Group filtered resources by department - memoized
   const resourcesByDepartment = useMemo(() => {
@@ -645,7 +671,7 @@ export default function Home({ selectedDate }: HomeProps) {
         })
         .sort((a, b) => a.PositionName.localeCompare(b.PositionName)); // Sort by position name
     });
-  }, [months, positions, selectedProjectFilter]);
+  }, [months, positions, selectedProjectFilter, quarterFilter]);
 
   // Excel Export Function for Monthly Allocation Dialog
   const exportMonthlyAllocationToExcel = async () => {
@@ -1057,6 +1083,20 @@ export default function Home({ selectedDate }: HomeProps) {
           Resource Allocation Table
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <FormControl size="small" sx={{ minWidth: 120 }}>
+            <InputLabel id="quarter-filter-label">Quarter</InputLabel>
+            <Select
+              labelId="quarter-filter-label"
+              value={quarterFilter}
+              label="Quarter"
+              onChange={(e) => setQuarterFilter(e.target.value as '1Q' | '2Q' | '3Q')}
+              sx={{ backgroundColor: 'white' }}
+            >
+              <MenuItem value="1Q">1Q (3 months)</MenuItem>
+              <MenuItem value="2Q">2Q (6 months)</MenuItem>
+              <MenuItem value="3Q">3Q (9 months)</MenuItem>
+            </Select>
+          </FormControl>
           <FormControl size="small" sx={{ minWidth: 200 }}>
             <InputLabel id="project-filter-label">
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -1166,7 +1206,7 @@ export default function Home({ selectedDate }: HomeProps) {
         maxHeight: '80vh',
         overflow: 'auto'
       }}>
-        <Table size="small" sx={{ width: '100%', tableLayout: 'fixed' }} stickyHeader>
+        <Table size="small" sx={{ width: 'auto', minWidth: '100%', tableLayout: 'auto' }} stickyHeader>
           <TableHead sx={{ backgroundColor: '#f9fafb' }}>
             <TableRow>
               <TableCell sx={{ 
@@ -1188,8 +1228,8 @@ export default function Home({ selectedDate }: HomeProps) {
                   key={idx} 
                   align="center" 
                   sx={{ 
-                    width: '120px', 
-                    minWidth: '120px',
+                    width: getMonthColumnWidth(), 
+                    minWidth: getMonthColumnWidth(),
                     cursor: 'pointer',
                     backgroundColor: '#f3f4f6',
                     fontWeight: 600,
@@ -1230,8 +1270,8 @@ export default function Home({ selectedDate }: HomeProps) {
               {months.map((_, i) => (
                 <TableCell key={i} align="center" sx={{ 
                   p: 0.5, 
-                  width: '120px', 
-                  minWidth: '120px',
+                  width: getMonthColumnWidth(), 
+                  minWidth: getMonthColumnWidth(),
                   backgroundColor: '#f9fafb',
                   border: '1px solid rgba(0, 0, 0, 0.12)',
                   verticalAlign: 'top'
@@ -1258,7 +1298,7 @@ export default function Home({ selectedDate }: HomeProps) {
                   <TableCell 
                     colSpan={10} 
                     sx={{ 
-                      backgroundColor: 'grey.100', 
+                      backgroundColor: 'grey.300', 
                       fontWeight: 'bold',
                       fontSize: '0.75rem',
                       p: 0.5,
@@ -1390,7 +1430,7 @@ export default function Home({ selectedDate }: HomeProps) {
                                       left: 0,
                                       width: '100%',
                                       height: '100%',
-                                      backgroundColor: 'rgba(0,0,0,0.1)',
+                                      backgroundColor: 'transparent',
                                       borderRadius: 1,
                                       overflow: 'hidden',
                                       display: 'flex',
