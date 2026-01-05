@@ -77,3 +77,155 @@ export async function getVendors(): Promise<{ number: string; name: string }[]> 
     throw error;
   }
 }
+
+/**
+ * Bank account type from BC API
+ */
+export interface BankAccount {
+  No: string;
+  Name: string;
+  Currency_Code: string;
+}
+
+/**
+ * Fetch bank accounts for payment journal
+ */
+export async function getBankAccounts(): Promise<BankAccount[]> {
+  try {
+    const response = await api.get('/bc/bank-accounts');
+    return response.data.bankAccounts || [];
+  } catch (error) {
+    console.error('Error fetching bank accounts:', error);
+    throw error;
+  }
+}
+
+/**
+ * Generic payment data for creating journal lines
+ */
+export interface PaymentData {
+  vendorNo: string;
+  vendorName: string;
+  amount: number;
+  documentNo: string;
+  invoiceReference: string; // External Document No / Reference
+  bankAccountNo: string;
+  paymentReference: string; // Document No.
+  bankCurrencyCode: string;
+}
+
+/**
+ * Create a payment journal line in Business Central
+ * Creates TWO lines: one for Vendor (debit), one for Bank Account (credit)
+ * @param paymentData - The payment data
+ * @returns Object with success status, message, and URL to open payment journal
+ */
+export async function createPaymentJournalLineGeneric(
+  paymentData: PaymentData
+): Promise<{
+  success: boolean;
+  message: string;
+  lineId?: string;
+  paymentUrl?: string;
+  error?: string;
+}> {
+  try {
+    const response = await api.post('/bc/payment-journal-line', paymentData);
+    return response.data;
+  } catch (error: any) {
+    console.error('Error creating payment journal line:', error);
+    return {
+      success: false,
+      message: error.response?.data?.error || 'Failed to create payment journal line',
+      error: error.response?.data?.details || error.message
+    };
+  }
+}
+
+/**
+ * Create a payment journal line in Business Central for Purchase Invoice
+ * Creates TWO lines: one for Vendor (debit), one for Bank Account (credit)
+ * @param invoice - The purchase invoice to create payment for
+ * @param bankAccountNo - The bank account number for the credit line
+ * @param paymentReference - The payment reference (Document No.)
+ * @param bankCurrencyCode - The currency code of the selected bank account
+ * @returns Object with success status, message, and URL to open payment journal
+ */
+export async function createPaymentJournalLine(
+  invoice: PurchaseInvoice,
+  bankAccountNo: string,
+  paymentReference: string,
+  bankCurrencyCode: string
+): Promise<{
+  success: boolean;
+  message: string;
+  lineId?: string;
+  paymentUrl?: string;
+  error?: string;
+}> {
+  return createPaymentJournalLineGeneric({
+    vendorNo: invoice.Buy_from_Vendor_No,
+    vendorName: invoice.Buy_from_Vendor_Name,
+    amount: invoice.Amount,
+    documentNo: invoice.No,
+    invoiceReference: invoice.External_Document_No || '',
+    bankAccountNo,
+    paymentReference,
+    bankCurrencyCode
+  });
+}
+
+/**
+ * Create a payment journal line for Personnel Expense
+ */
+export async function createPersonnelPaymentJournalLine(
+  expense: PersonnelExpense,
+  bankAccountNo: string,
+  paymentReference: string,
+  bankCurrencyCode: string
+): Promise<{
+  success: boolean;
+  message: string;
+  lineId?: string;
+  paymentUrl?: string;
+  error?: string;
+}> {
+  return createPaymentJournalLineGeneric({
+    vendorNo: expense.Vendor,
+    vendorName: expense.Vendor_Name,
+    amount: expense.Amount,
+    documentNo: expense.No,
+    invoiceReference: expense.Invoice_Number || expense.Payment_Reference || '', // Use Invoice_Number as External Document No
+    bankAccountNo,
+    paymentReference,
+    bankCurrencyCode
+  });
+}
+
+/**
+ * Create a payment journal line for Prepayment
+ */
+export async function createPrepaymentJournalLine(
+  prepayment: Prepayment,
+  vendorNo: string, // Need to pass vendor No since Prepayment only has Vendor_Name
+  bankAccountNo: string,
+  paymentReference: string,
+  bankCurrencyCode: string
+): Promise<{
+  success: boolean;
+  message: string;
+  lineId?: string;
+  paymentUrl?: string;
+  error?: string;
+}> {
+  return createPaymentJournalLineGeneric({
+    vendorNo: vendorNo,
+    vendorName: prepayment.Vendor_Name,
+    amount: prepayment.Prepayment_Amount,
+    documentNo: prepayment.No,
+    invoiceReference: prepayment.Payment_Reference || '', // Use Payment_Reference as External Document No
+    bankAccountNo,
+    paymentReference,
+    bankCurrencyCode
+  });
+}

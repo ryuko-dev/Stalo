@@ -26,6 +26,15 @@ import {
   MenuItem,
   ListItemIcon,
   ListItemText,
+  Snackbar,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  FormControl,
+  InputLabel,
+  Select,
 } from '@mui/material';
 import { 
   Folder as FolderIcon, 
@@ -34,7 +43,7 @@ import {
   Payment as PaymentIcon,
   Visibility as VisibilityIcon,
 } from '@mui/icons-material';
-import { getPersonnelExpenses, getPrepayments, getPurchaseInvoices, getSalaryPayments, getVendors } from '../services/paymentService';
+import { getPersonnelExpenses, getPrepayments, getPurchaseInvoices, getSalaryPayments, getVendors, createPaymentJournalLine, createPersonnelPaymentJournalLine, createPrepaymentJournalLine, getBankAccounts, type BankAccount } from '../services/paymentService';
 import { convertToUSD } from '../services/exchangeRateService';
 import type { PersonnelExpense, Prepayment, PurchaseInvoice, SalaryPayment } from '../types/payments';
 
@@ -80,6 +89,25 @@ export default function Payments() {
     mouseY: number;
     salary: SalaryPayment | null;
   } | null>(null);
+
+  // Snackbar state for payment journal feedback
+  const [snackbar, setSnackbar] = useState<{
+    open: boolean;
+    message: string;
+    severity: 'success' | 'error' | 'info';
+  }>({ open: false, message: '', severity: 'info' });
+  const [creatingPayment, setCreatingPayment] = useState(false);
+
+  // Payment dialog state - supports Purchase Invoice, Personnel, and Prepayment
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [paymentDialogInvoice, setPaymentDialogInvoice] = useState<PurchaseInvoice | null>(null);
+  const [paymentDialogPersonnel, setPaymentDialogPersonnel] = useState<PersonnelExpense | null>(null);
+  const [paymentDialogPrepayment, setPaymentDialogPrepayment] = useState<Prepayment | null>(null);
+  const [paymentDialogType, setPaymentDialogType] = useState<'invoice' | 'personnel' | 'prepayment'>('invoice');
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [selectedBankAccount, setSelectedBankAccount] = useState<string>('');
+  const [paymentReference, setPaymentReference] = useState<string>('');
+  const [loadingBankAccounts, setLoadingBankAccounts] = useState(false);
 
   // Data states
   const [personnelExpenses, setPersonnelExpenses] = useState<PersonnelExpense[]>([]);
@@ -257,10 +285,40 @@ export default function Payments() {
     setContextMenu(null);
   };
 
-  const handlePayClick = () => {
-    const paymentUrl = 'https://businesscentral.dynamics.com/9f4e2976-b07e-4f8f-9c78-055f6c855a11/Production?company=ARK%20Group%20Live&page=256&filter=%27Gen.%20Journal%20Line%27.%27Journal%20Template%20Name%27%20IS%20%27PAYMENT%27&dc=0';
-    window.open(paymentUrl, '_blank');
+  const handlePayClick = async () => {
+    const expense = contextMenu?.expense;
+    if (!expense) {
+      handleCloseContextMenu();
+      return;
+    }
+
+    // Open payment dialog
+    setPaymentDialogType('personnel');
+    setPaymentDialogPersonnel(expense);
+    setPaymentDialogInvoice(null);
+    setPaymentDialogPrepayment(null);
+    setSelectedBankAccount('');
+    setPaymentReference('');
+    setPaymentDialogOpen(true);
     handleCloseContextMenu();
+
+    // Load bank accounts if not already loaded
+    if (bankAccounts.length === 0) {
+      setLoadingBankAccounts(true);
+      try {
+        const accounts = await getBankAccounts();
+        setBankAccounts(accounts);
+      } catch (err) {
+        console.error('Error loading bank accounts:', err);
+        setSnackbar({
+          open: true,
+          message: 'Failed to load bank accounts',
+          severity: 'error'
+        });
+      } finally {
+        setLoadingBankAccounts(false);
+      }
+    }
   };
 
   const handleSeeTransactionClick = () => {
@@ -316,10 +374,40 @@ export default function Payments() {
     setPrepaymentContextMenu(null);
   };
 
-  const handlePrepaymentPayClick = () => {
-    const paymentUrl = 'https://businesscentral.dynamics.com/9f4e2976-b07e-4f8f-9c78-055f6c855a11/Production?company=ARK%20Group%20Live&page=256&filter=%27Gen.%20Journal%20Line%27.%27Journal%20Template%20Name%27%20IS%20%27PAYMENT%27&dc=0';
-    window.open(paymentUrl, '_blank');
+  const handlePrepaymentPayClick = async () => {
+    const prepayment = prepaymentContextMenu?.prepayment;
+    if (!prepayment) {
+      handleClosePrepaymentContextMenu();
+      return;
+    }
+
+    // Open payment dialog
+    setPaymentDialogType('prepayment');
+    setPaymentDialogPrepayment(prepayment);
+    setPaymentDialogInvoice(null);
+    setPaymentDialogPersonnel(null);
+    setSelectedBankAccount('');
+    setPaymentReference('');
+    setPaymentDialogOpen(true);
     handleClosePrepaymentContextMenu();
+
+    // Load bank accounts if not already loaded
+    if (bankAccounts.length === 0) {
+      setLoadingBankAccounts(true);
+      try {
+        const accounts = await getBankAccounts();
+        setBankAccounts(accounts);
+      } catch (err) {
+        console.error('Error loading bank accounts:', err);
+        setSnackbar({
+          open: true,
+          message: 'Failed to load bank accounts',
+          severity: 'error'
+        });
+      } finally {
+        setLoadingBankAccounts(false);
+      }
+    }
   };
 
   const handlePrepaymentShowVendorClick = () => {
@@ -385,10 +473,154 @@ export default function Payments() {
     setPurchaseInvoiceContextMenu(null);
   };
 
-  const handlePurchaseInvoicePayClick = () => {
-    const paymentUrl = 'https://businesscentral.dynamics.com/9f4e2976-b07e-4f8f-9c78-055f6c855a11/Production?company=ARK%20Group%20Live&page=256&filter=%27Gen.%20Journal%20Line%27.%27Journal%20Template%20Name%27%20IS%20%27PAYMENT%27&dc=0';
-    window.open(paymentUrl, '_blank');
+  const handlePurchaseInvoicePayClick = async () => {
+    const invoice = purchaseInvoiceContextMenu?.invoice;
+    if (!invoice) {
+      handleClosePurchaseInvoiceContextMenu();
+      return;
+    }
+
+    // Open payment dialog instead of directly creating
+    setPaymentDialogType('invoice');
+    setPaymentDialogInvoice(invoice);
+    setPaymentDialogPersonnel(null);
+    setPaymentDialogPrepayment(null);
+    setSelectedBankAccount('');
+    setPaymentReference('');
+    setPaymentDialogOpen(true);
     handleClosePurchaseInvoiceContextMenu();
+
+    // Load bank accounts if not already loaded
+    if (bankAccounts.length === 0) {
+      setLoadingBankAccounts(true);
+      try {
+        const accounts = await getBankAccounts();
+        setBankAccounts(accounts);
+      } catch (err) {
+        console.error('Error loading bank accounts:', err);
+        setSnackbar({
+          open: true,
+          message: 'Failed to load bank accounts',
+          severity: 'error'
+        });
+      } finally {
+        setLoadingBankAccounts(false);
+      }
+    }
+  };
+
+  const handlePaymentDialogClose = () => {
+    setPaymentDialogOpen(false);
+    setPaymentDialogInvoice(null);
+    setPaymentDialogPersonnel(null);
+    setPaymentDialogPrepayment(null);
+    setSelectedBankAccount('');
+    setPaymentReference('');
+  };
+
+  const handlePaymentDialogSubmit = async () => {
+    if (!selectedBankAccount) {
+      setSnackbar({
+        open: true,
+        message: 'Please select a bank account',
+        severity: 'error'
+      });
+      return;
+    }
+
+    const selectedBank = bankAccounts.find(b => b.No === selectedBankAccount);
+    if (!selectedBank) {
+      setSnackbar({
+        open: true,
+        message: 'Invalid bank account selected',
+        severity: 'error'
+      });
+      return;
+    }
+
+    setPaymentDialogOpen(false);
+    setCreatingPayment(true);
+
+    try {
+      let result;
+      let vendorName = '';
+
+      if (paymentDialogType === 'invoice' && paymentDialogInvoice) {
+        // Create payment journal line for Purchase Invoice
+        result = await createPaymentJournalLine(
+          paymentDialogInvoice,
+          selectedBankAccount,
+          paymentReference,
+          selectedBank.Currency_Code
+        );
+        vendorName = paymentDialogInvoice.Buy_from_Vendor_Name;
+      } else if (paymentDialogType === 'personnel' && paymentDialogPersonnel) {
+        // Create payment journal line for Personnel Expense
+        result = await createPersonnelPaymentJournalLine(
+          paymentDialogPersonnel,
+          selectedBankAccount,
+          paymentReference,
+          selectedBank.Currency_Code
+        );
+        vendorName = paymentDialogPersonnel.Vendor_Name;
+      } else if (paymentDialogType === 'prepayment' && paymentDialogPrepayment) {
+        // Create payment journal line for Prepayment
+        // Need to look up vendor ID from vendor name
+        const vendorNo = vendorLookup.get(paymentDialogPrepayment.Vendor_Name?.trim() || '') || '';
+        result = await createPrepaymentJournalLine(
+          paymentDialogPrepayment,
+          vendorNo,
+          selectedBankAccount,
+          paymentReference,
+          selectedBank.Currency_Code
+        );
+        vendorName = paymentDialogPrepayment.Vendor_Name;
+      } else {
+        setSnackbar({
+          open: true,
+          message: 'No payment data selected',
+          severity: 'error'
+        });
+        return;
+      }
+      
+      if (result.success) {
+        setSnackbar({
+          open: true,
+          message: `Payment journal lines created for ${vendorName}`,
+          severity: 'success'
+        });
+        
+        // Open the payment journal in BC
+        if (result.paymentUrl) {
+          window.open(result.paymentUrl, '_blank');
+        }
+      } else {
+        setSnackbar({
+          open: true,
+          message: result.message || 'Failed to create payment journal line',
+          severity: 'error'
+        });
+        
+        // Fallback: open General Journal
+        const paymentUrl = 'https://businesscentral.dynamics.com/9f4e2976-b07e-4f8f-9c78-055f6c855a11/Production?company=ARK%20Group%20Live&page=39&filter=%27Gen.%20Journal%20Line%27.%27Journal%20Template%20Name%27%20IS%20%27GENERAL%27%20AND%20%27Gen.%20Journal%20Line%27.%27Journal%20Batch%20Name%27%20IS%20%27PAYMENT%27&dc=0';
+        window.open(paymentUrl, '_blank');
+      }
+    } catch (err) {
+      console.error('Error creating payment journal line:', err);
+      setSnackbar({
+        open: true,
+        message: 'Error creating payment journal line',
+        severity: 'error'
+      });
+    } finally {
+      setCreatingPayment(false);
+      setPaymentDialogInvoice(null);
+      setPaymentDialogPersonnel(null);
+      setPaymentDialogPrepayment(null);
+      setSelectedBankAccount('');
+      setPaymentReference('');
+    }
   };
 
   const handlePurchaseInvoiceShowVendorClick = () => {
@@ -634,7 +866,7 @@ export default function Payments() {
         {/* Summary Tab */}
         <TabPanel value={activeTab} index={0}>
           <TableContainer>
-            <Table size="small" sx={{ '& .MuiTableCell-root': { py: 0.5 } }}>
+            <Table size="small" sx={{ '& .MuiTableCell-root': { py: 0.5, fontSize: '0.75rem' } }}>
               <TableHead>
                 <TableRow sx={{ bgcolor: 'primary.main' }}>
                   <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Currency</TableCell>
@@ -680,10 +912,10 @@ export default function Payments() {
                 )}
                 {Object.keys(getSummaryData()).length > 0 && (
                   <TableRow sx={{ bgcolor: 'action.selected', borderTop: 2, borderColor: 'primary.main' }}>
-                    <TableCell colSpan={6} align="right" sx={{ fontWeight: 'bold', fontSize: '1.1rem' }}>
+                    <TableCell colSpan={6} align="right" sx={{ fontWeight: 'bold', fontSize: '0.85rem' }}>
                       Grand Total:
                     </TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 'bold', fontSize: '1.1rem', color: 'primary.main' }}>
+                    <TableCell align="right" sx={{ fontWeight: 'bold', fontSize: '0.85rem', color: 'primary.main' }}>
                       {formatCurrency(
                         Object.values(usdAmounts).reduce((sum, val) => sum + val, 0),
                         'USD'
@@ -699,13 +931,14 @@ export default function Payments() {
         {/* Personnel Tab */}
         <TabPanel value={activeTab} index={1}>
           <TableContainer>
-            <Table size="small" sx={{ '& .MuiTableCell-root': { py: 0.5 } }}>
+            <Table size="small" sx={{ '& .MuiTableCell-root': { py: 0.5, fontSize: '0.75rem' } }}>
               <TableHead>
                 <TableRow sx={{ bgcolor: 'primary.main' }}>
                   <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>No</TableCell>
                   <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Vendor ID</TableCell>
                   <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Vendor Name</TableCell>
                   <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Type</TableCell>
+                  <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Reference</TableCell>
                   <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Project</TableCell>
                   <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Requested Date</TableCell>
                   <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Currency</TableCell>
@@ -717,7 +950,7 @@ export default function Payments() {
               <TableBody>
                 {filteredPersonnelExpenses.length === 0 && !loading && (
                   <TableRow>
-                    <TableCell colSpan={10} align="center">
+                    <TableCell colSpan={11} align="center">
                       <Typography variant="body2" color="text.secondary">
                         {searchTerm ? 'No results found' : 'No personnel expenses found'}
                       </Typography>
@@ -741,6 +974,7 @@ export default function Payments() {
                       <TableCell>{expense.Vendor || '-'}</TableCell>
                       <TableCell>{expense.Vendor_Name || '-'}</TableCell>
                       <TableCell>{expense.Type || '-'}</TableCell>
+                      <TableCell>{expense.Invoice_Number || '-'}</TableCell>
                       <TableCell>{expense.Project || '-'}</TableCell>
                       <TableCell>{formatDate(expense.Approval_Requested_By_Datetime)}</TableCell>
                       <TableCell>{expense.Currency || '-'}</TableCell>
@@ -776,7 +1010,7 @@ export default function Payments() {
                   {paymentMethod}
                 </Typography>
                 <TableContainer>
-                  <Table size="small" sx={{ '& .MuiTableCell-root': { py: 0.5 } }}>
+                  <Table size="small" sx={{ '& .MuiTableCell-root': { py: 0.5, fontSize: '0.75rem' } }}>
                     <TableHead>
                       <TableRow sx={{ bgcolor: 'primary.main' }}>
                         <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>No</TableCell>
@@ -840,12 +1074,13 @@ export default function Payments() {
                   {paymentMethod}
                 </Typography>
                 <TableContainer>
-                  <Table size="small" sx={{ '& .MuiTableCell-root': { py: 0.5 } }}>
+                  <Table size="small" sx={{ '& .MuiTableCell-root': { py: 0.5, fontSize: '0.75rem' } }}>
                     <TableHead>
                       <TableRow sx={{ bgcolor: 'primary.main' }}>
                         <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>No</TableCell>
                         <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Vendor ID</TableCell>
                         <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Vendor Name</TableCell>
+                        <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Reference</TableCell>
                         <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Posting Date</TableCell>
                         <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Project</TableCell>
                         <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Currency</TableCell>
@@ -869,6 +1104,7 @@ export default function Payments() {
                           <TableCell>{invoice.No || '-'}</TableCell>
                           <TableCell>{invoice.Buy_from_Vendor_No || '-'}</TableCell>
                           <TableCell>{invoice.Buy_from_Vendor_Name || '-'}</TableCell>
+                          <TableCell>{invoice.External_Document_No || '-'}</TableCell>
                           <TableCell>{formatDate(invoice.Posting_Date)}</TableCell>
                           <TableCell>{invoice.Project || '-'}</TableCell>
                           <TableCell>{invoice.Currency_Code || '-'}</TableCell>
@@ -894,7 +1130,7 @@ export default function Payments() {
         {/* Salary Tab */}
         <TabPanel value={activeTab} index={4}>
           <TableContainer>
-            <Table size="small" sx={{ '& .MuiTableCell-root': { py: 0.5 } }}>
+            <Table size="small" sx={{ '& .MuiTableCell-root': { py: 0.5, fontSize: '0.75rem' } }}>
               <TableHead>
                 <TableRow sx={{ bgcolor: 'primary.main' }}>
                   <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>No</TableCell>
@@ -1132,6 +1368,119 @@ export default function Payments() {
           <ListItemText>Open Folder</ListItemText>
         </MenuItem>
       </Menu>
+
+      {/* Snackbar for payment feedback */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={() => setSnackbar({ ...snackbar, open: false })} 
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+
+      {/* Payment Dialog */}
+      <Dialog open={paymentDialogOpen} onClose={handlePaymentDialogClose} maxWidth="sm" fullWidth>
+        <DialogTitle>Create Payment Journal</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 1 }}>
+            {/* Show different info based on payment type */}
+            {paymentDialogType === 'invoice' && paymentDialogInvoice && (
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                <strong>Vendor:</strong> {paymentDialogInvoice.Buy_from_Vendor_Name}<br />
+                <strong>Invoice:</strong> {paymentDialogInvoice.No}<br />
+                <strong>Reference:</strong> {paymentDialogInvoice.External_Document_No || '-'}<br />
+                <strong>Amount:</strong> {paymentDialogInvoice.Currency_Code} {paymentDialogInvoice.Amount?.toLocaleString()}
+              </Typography>
+            )}
+            {paymentDialogType === 'personnel' && paymentDialogPersonnel && (
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                <strong>Vendor:</strong> {paymentDialogPersonnel.Vendor_Name}<br />
+                <strong>Expense No:</strong> {paymentDialogPersonnel.No}<br />
+                <strong>Reference:</strong> {paymentDialogPersonnel.Invoice_Number || '-'}<br />
+                <strong>Amount:</strong> {paymentDialogPersonnel.Currency} {paymentDialogPersonnel.Amount?.toLocaleString()}
+              </Typography>
+            )}
+            {paymentDialogType === 'prepayment' && paymentDialogPrepayment && (
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                <strong>Vendor:</strong> {paymentDialogPrepayment.Vendor_Name}<br />
+                <strong>Prepayment No:</strong> {paymentDialogPrepayment.No}<br />
+                <strong>Reference:</strong> {paymentDialogPrepayment.Payment_Reference || '-'}<br />
+                <strong>Amount:</strong> {paymentDialogPrepayment.Currency} {paymentDialogPrepayment.Prepayment_Amount?.toLocaleString()}
+              </Typography>
+            )}
+            
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel id="bank-account-label">Bank Account</InputLabel>
+              <Select
+                labelId="bank-account-label"
+                value={selectedBankAccount}
+                label="Bank Account"
+                onChange={(e) => setSelectedBankAccount(e.target.value)}
+                disabled={loadingBankAccounts}
+              >
+                {loadingBankAccounts ? (
+                  <MenuItem disabled>Loading bank accounts...</MenuItem>
+                ) : (
+                  bankAccounts.map((bank) => (
+                    <MenuItem key={bank.No} value={bank.No}>
+                      {bank.Name} {bank.Currency_Code ? `(${bank.Currency_Code})` : ''}
+                    </MenuItem>
+                  ))
+                )}
+              </Select>
+            </FormControl>
+
+            <TextField
+              fullWidth
+              label="Payment Reference"
+              value={paymentReference}
+              onChange={(e) => setPaymentReference(e.target.value)}
+              placeholder="Enter payment reference (Document No.)"
+              helperText="This will be used as Document No. in the journal"
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handlePaymentDialogClose}>Cancel</Button>
+          <Button 
+            onClick={handlePaymentDialogSubmit} 
+            variant="contained" 
+            disabled={!selectedBankAccount || loadingBankAccounts}
+          >
+            Submit
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Loading overlay when creating payment */}
+      {creatingPayment && (
+        <Box
+          sx={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.3)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+          }}
+        >
+          <Paper sx={{ p: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
+            <CircularProgress size={24} />
+            <Typography>Creating payment journal line...</Typography>
+          </Paper>
+        </Box>
+      )}
     </Box>
   );
 }

@@ -564,7 +564,8 @@ router.get('/purchase-invoices', async (req: Request, res: Response) => {
         if (entry.Document_No && !ledgerMap.has(entry.Document_No)) {
           ledgerMap.set(entry.Document_No, {
             Open: entry.Open,
-            Original_Amount: entry.Original_Amount || 0
+            Original_Amount: entry.Original_Amount || 0,
+            External_Document_No: entry.External_Document_No || ''
           });
         }
       });
@@ -581,7 +582,8 @@ router.get('/purchase-invoices', async (req: Request, res: Response) => {
           ...invoice,
           Closed: !ledgerData.Open, // Open = false means Closed = true
           Amount: Math.abs(ledgerData.Original_Amount), // Use Original_Amount from ledger
-          Payment_Method_Code: invoice.Payment_Method_Code || '' // Include payment method code
+          Payment_Method_Code: invoice.Payment_Method_Code || '', // Include payment method code
+          External_Document_No: ledgerData.External_Document_No || '' // Reference from vendor ledger
         };
       } else {
         // Fallback to invoice data if ledger entry not found
@@ -589,7 +591,8 @@ router.get('/purchase-invoices', async (req: Request, res: Response) => {
           ...invoice,
           Closed: invoice.Closed || false, // Use existing Closed field or default to false
           Amount: invoice.Amount || 0, // Use existing Amount
-          Payment_Method_Code: invoice.Payment_Method_Code || '' // Include payment method code
+          Payment_Method_Code: invoice.Payment_Method_Code || '', // Include payment method code
+          External_Document_No: '' // No reference available
         };
       }
     });
@@ -616,6 +619,221 @@ router.get('/salary-payments', async (req: Request, res: Response) => {
     console.error('Error fetching salary payments from BC:', error.response?.data || error.message);
     res.status(error.response?.status || 500).json({ 
       error: 'Failed to fetch salary payments',
+      details: error.response?.data || error.message 
+    });
+  }
+});
+
+/**
+ * GET /api/bc/bank-accounts
+ * Fetch bank accounts for payment journal
+ */
+router.get('/bank-accounts', async (req: Request, res: Response) => {
+  try {
+    const bcClient = await createBCClient();
+    
+    const response = await bcClient.get('/Bank_Account_Card_Excel', {
+      params: {
+        $select: 'No,Name,Currency_Code'
+      }
+    });
+    const bankAccounts = (response.data as any).value || [];
+    
+    res.json({ bankAccounts, count: bankAccounts.length });
+  } catch (error: any) {
+    console.error('Error fetching bank accounts from BC:', error.response?.data || error.message);
+    res.status(error.response?.status || 500).json({ 
+      error: 'Failed to fetch bank accounts',
+      details: error.response?.data || error.message 
+    });
+  }
+});
+
+/**
+ * POST /api/bc/payment-journal-line
+ * Create payment journal lines for a purchase invoice using BC API v2.0
+ * Creates TWO lines: one for Vendor (debit), one for Bank Account (credit)
+ * Body: { vendorNo, vendorName, amount, documentNo, invoiceReference, bankAccountNo, paymentReference, bankCurrencyCode }
+ */
+router.post('/payment-journal-line', async (req: Request, res: Response) => {
+  try {
+    const { vendorNo, vendorName, amount, documentNo, invoiceReference, bankAccountNo, paymentReference, bankCurrencyCode } = req.body;
+
+    console.log('Payment journal line request received:', {
+      vendorNo,
+      vendorName,
+      amount,
+      documentNo,
+      invoiceReference, // This should be the Reference from the invoice list (External_Document_No)
+      bankAccountNo,
+      paymentReference,
+      bankCurrencyCode
+    });
+
+    if (!vendorNo || !amount || !bankAccountNo) {
+      return res.status(400).json({ error: 'vendorNo, amount, and bankAccountNo are required' });
+    }
+
+    // Use standard BC API v2.0 for journals
+    const token = await getAccessToken();
+    const bcApiUrl = `https://api.businesscentral.dynamics.com/v2.0/${BC_TENANT_ID}/Production/api/v2.0/companies`;
+    
+    // First, get the company ID
+    let companyId: string;
+    try {
+      const companiesResponse = await axios.get(bcApiUrl, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const companies = (companiesResponse.data as any).value || [];
+      const company = companies.find((c: any) => c.name === 'ARK Group Live' || c.displayName === 'ARK Group Live');
+      if (!company) {
+        return res.status(404).json({ error: 'Company not found' });
+      }
+      companyId = company.id;
+    } catch (companyError: any) {
+      console.error('Error fetching companies:', companyError.response?.data || companyError.message);
+      return res.status(500).json({ error: 'Failed to fetch company', details: companyError.response?.data });
+    }
+
+    // Get or create PAYMENT journal batch
+    const journalsUrl = `https://api.businesscentral.dynamics.com/v2.0/${BC_TENANT_ID}/Production/api/v2.0/companies(${companyId})/journals`;
+    let journalId: string;
+    
+    try {
+      const journalsResponse = await axios.get(journalsUrl, {
+        headers: { 'Authorization': `Bearer ${token}` },
+        params: { $filter: "code eq 'PAYMENT'" }
+      });
+      const journals = (journalsResponse.data as any).value || [];
+      
+      if (journals.length > 0) {
+        journalId = journals[0].id;
+      } else {
+        // Create new journal if not found
+        const createJournalResponse = await axios.post(journalsUrl, {
+          code: 'PAYMENT',
+          displayName: 'Payment Journal'
+        }, {
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        journalId = (createJournalResponse.data as any).id;
+      }
+    } catch (journalError: any) {
+      console.error('Error with journals:', journalError.response?.data || journalError.message);
+      return res.status(500).json({ error: 'Failed to access payment journal', details: journalError.response?.data });
+    }
+
+    const journalLinesUrl = `https://api.businesscentral.dynamics.com/v2.0/${BC_TENANT_ID}/Production/api/v2.0/companies(${companyId})/journals(${journalId})/journalLines`;
+    
+    // Build description: "Payment for {Vendor Name} {Reference}" - max 100 chars
+    // Reference is from invoice list (invoiceReference), NOT the payment reference
+    const refFromInvoice = invoiceReference || '';
+    let desc = `Payment for ${vendorName || vendorNo}${refFromInvoice ? ' ' + refFromInvoice : ''}`;
+    if (desc.length > 100) {
+      desc = desc.substring(0, 97) + '...';
+    }
+
+    const postingDate = new Date().toISOString().split('T')[0];
+    const absAmount = Math.abs(amount);
+
+    // LINE 1: Vendor line (DEBIT - positive amount)
+    const vendorLine: any = {
+      accountType: 'Vendor',
+      accountNumber: vendorNo,
+      postingDate: postingDate,
+      documentNumber: paymentReference || '', // Payment reference goes to Document No.
+      amount: absAmount, // Positive = Debit
+      description: desc,
+      externalDocumentNumber: refFromInvoice // Reference from invoice goes to External Document No.
+    };
+
+    console.log('Creating VENDOR journal line (DEBIT):', vendorLine);
+
+    const vendorResponse = await axios.post(journalLinesUrl, vendorLine, {
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    console.log('✅ Vendor line created:', vendorResponse.data);
+
+    // LINE 2: Bank Account line (CREDIT - negative amount)
+    const bankLine: any = {
+      accountType: 'Bank Account',
+      accountNumber: bankAccountNo,
+      postingDate: postingDate,
+      documentNumber: paymentReference || '', // Same Document No.
+      amount: -absAmount, // Negative = Credit
+      description: desc,
+      externalDocumentNumber: refFromInvoice // Same External Document No.
+    };
+
+    console.log('Creating BANK ACCOUNT journal line (CREDIT):', bankLine);
+
+    const bankResponse = await axios.post(journalLinesUrl, bankLine, {
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    console.log('✅ Bank Account line created:', bankResponse.data);
+    
+    // Return the URL to open the General Journal page
+    const paymentUrl = 'https://businesscentral.dynamics.com/9f4e2976-b07e-4f8f-9c78-055f6c855a11/Production?company=ARK%20Group%20Live&page=39&filter=%27Gen.%20Journal%20Line%27.%27Journal%20Template%20Name%27%20IS%20%27GENERAL%27%20AND%20%27Gen.%20Journal%20Line%27.%27Journal%20Batch%20Name%27%20IS%20%27PAYMENT%27&dc=0';
+    
+    res.json({ 
+      success: true, 
+      message: 'Payment journal lines created successfully (Vendor debit + Bank credit)',
+      vendorLineId: (vendorResponse.data as any).id,
+      bankLineId: (bankResponse.data as any).id,
+      paymentUrl
+    });
+  } catch (error: any) {
+    console.error('Error creating payment journal line:', error.response?.data || error.message);
+    
+    const bcError = error.response?.data?.error;
+    let errorMessage = 'Failed to create payment journal line';
+    
+    if (bcError?.message) {
+      errorMessage = bcError.message;
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    
+    res.status(error.response?.status || 500).json({ 
+      error: errorMessage,
+      details: error.response?.data || error.message 
+    });
+  }
+});
+
+/**
+ * GET /api/bc/journal-batches
+ * Get available journal batches for a template
+ * Query params: templateName (default: PAYMENT)
+ */
+router.get('/journal-batches', async (req: Request, res: Response) => {
+  try {
+    const templateName = (req.query.templateName as string) || 'PAYMENT';
+    const bcClient = await createBCClient();
+    
+    const response = await bcClient.get('/Gen_Journal_Batch', {
+      params: {
+        $filter: `Journal_Template_Name eq '${templateName}'`
+      }
+    });
+
+    const batches = (response.data as any).value || [];
+    res.json({ batches });
+  } catch (error: any) {
+    console.error('Error fetching journal batches from BC:', error.response?.data || error.message);
+    res.status(error.response?.status || 500).json({ 
+      error: 'Failed to fetch journal batches',
       details: error.response?.data || error.message 
     });
   }

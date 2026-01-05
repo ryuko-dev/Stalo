@@ -8,6 +8,7 @@ export interface PersonnelExpense {
   Vendor: string; // Vendor ID
   Vendor_Name: string;
   Type: string;
+  Invoice_Number: string; // Reference (Invoice Number)
   Project: string;
   Currency: string;
   Amount: number;
@@ -46,6 +47,7 @@ export interface PurchaseInvoice {
   No: string; // Invoice number
   Buy_from_Vendor_No: string; // Vendor ID
   Buy_from_Vendor_Name: string; // Vendor name
+  External_Document_No: string; // Reference (from Vendor Ledger Entries)
   Posting_Date: string; // Date posted
   Project: string; // Project code/name
   Currency_Code: string; // Currency
