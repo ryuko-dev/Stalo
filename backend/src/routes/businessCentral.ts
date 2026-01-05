@@ -813,6 +813,209 @@ router.post('/payment-journal-line', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/bc/vendor-cards
+ * Fetch full vendor list from Vendor_Card_Excel for employee selection in salary payments
+ */
+router.get('/vendor-cards', async (req: Request, res: Response) => {
+  try {
+    const bcClient = await createBCClient();
+    
+    const response = await bcClient.get('/Vendor_Card_Excel', {
+      params: {
+        $select: 'No,Name,Currency_Code'
+      }
+    });
+    const vendors = (response.data as any).value || [];
+    
+    res.json({ vendors, count: vendors.length });
+  } catch (error: any) {
+    console.error('Error fetching vendor cards from BC:', error.response?.data || error.message);
+    res.status(error.response?.status || 500).json({ 
+      error: 'Failed to fetch vendor cards',
+      details: error.response?.data || error.message 
+    });
+  }
+});
+
+/**
+ * POST /api/bc/salary-payment-journal-lines
+ * Create payment journal lines for salary payments (multiple vendors)
+ * Creates TWO lines per vendor: one for Vendor (debit), one for Bank Account (credit)
+ * Body: { bankAccountNo, bankCurrencyCode, payrollMonth (MM/YYYY), employees: [{ vendorNo, vendorName, paymentReference, amount }] }
+ */
+router.post('/salary-payment-journal-lines', async (req: Request, res: Response) => {
+  try {
+    const { bankAccountNo, bankCurrencyCode, payrollMonth, employees } = req.body;
+
+    console.log('Salary payment journal request received:', {
+      bankAccountNo,
+      bankCurrencyCode,
+      payrollMonth,
+      employeeCount: employees?.length
+    });
+
+    if (!bankAccountNo || !payrollMonth || !employees || employees.length === 0) {
+      return res.status(400).json({ error: 'bankAccountNo, payrollMonth, and at least one employee are required' });
+    }
+
+    // Use standard BC API v2.0 for journals
+    const token = await getAccessToken();
+    const bcApiUrl = `https://api.businesscentral.dynamics.com/v2.0/${BC_TENANT_ID}/Production/api/v2.0/companies`;
+    
+    // Get company ID
+    let companyId: string;
+    try {
+      const companiesResponse = await axios.get(bcApiUrl, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const companies = (companiesResponse.data as any).value || [];
+      const company = companies.find((c: any) => c.name === 'ARK Group Live' || c.displayName === 'ARK Group Live');
+      if (!company) {
+        return res.status(404).json({ error: 'Company not found' });
+      }
+      companyId = company.id;
+    } catch (companyError: any) {
+      console.error('Error fetching companies:', companyError.response?.data || companyError.message);
+      return res.status(500).json({ error: 'Failed to fetch company', details: companyError.response?.data });
+    }
+
+    // Get or create PAYMENT journal batch
+    const journalsUrl = `https://api.businesscentral.dynamics.com/v2.0/${BC_TENANT_ID}/Production/api/v2.0/companies(${companyId})/journals`;
+    let journalId: string;
+    
+    try {
+      const journalsResponse = await axios.get(journalsUrl, {
+        headers: { 'Authorization': `Bearer ${token}` },
+        params: { $filter: "code eq 'PAYMENT'" }
+      });
+      const journals = (journalsResponse.data as any).value || [];
+      
+      if (journals.length > 0) {
+        journalId = journals[0].id;
+      } else {
+        const createJournalResponse = await axios.post(journalsUrl, {
+          code: 'PAYMENT',
+          displayName: 'Payment Journal'
+        }, {
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        journalId = (createJournalResponse.data as any).id;
+      }
+    } catch (journalError: any) {
+      console.error('Error with journals:', journalError.response?.data || journalError.message);
+      return res.status(500).json({ error: 'Failed to access payment journal', details: journalError.response?.data });
+    }
+
+    const journalLinesUrl = `https://api.businesscentral.dynamics.com/v2.0/${BC_TENANT_ID}/Production/api/v2.0/companies(${companyId})/journals(${journalId})/journalLines`;
+    const postingDate = new Date().toISOString().split('T')[0];
+    
+    const results: any[] = [];
+    const errors: any[] = [];
+
+    // Create journal lines for each employee
+    for (const employee of employees) {
+      const { vendorNo, vendorName, paymentReference, amount } = employee;
+      
+      if (!vendorNo || !amount) {
+        errors.push({ vendorNo, error: 'Missing vendorNo or amount' });
+        continue;
+      }
+
+      // Description: "Salary for {Vendor Name} {Month/Year}" - max 100 chars
+      let desc = `Salary for ${vendorName || vendorNo} ${payrollMonth}`;
+      if (desc.length > 100) {
+        desc = desc.substring(0, 97) + '...';
+      }
+
+      const absAmount = Math.abs(amount);
+
+      try {
+        // LINE 1: Vendor line (DEBIT - positive amount)
+        const vendorLine: any = {
+          accountType: 'Vendor',
+          accountNumber: vendorNo,
+          postingDate: postingDate,
+          documentNumber: paymentReference || '', // Payment reference as Document No.
+          amount: absAmount, // Positive = Debit
+          description: desc,
+          externalDocumentNumber: payrollMonth // Month/Year as External Document No. (Vendor Invoice Ref)
+        };
+
+        console.log(`Creating VENDOR journal line for ${vendorName}:`, vendorLine);
+
+        const vendorResponse = await axios.post(journalLinesUrl, vendorLine, {
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        console.log(`✅ Vendor line created for ${vendorName}`);
+
+        // LINE 2: Bank Account line (CREDIT - negative amount)
+        const bankLine: any = {
+          accountType: 'Bank Account',
+          accountNumber: bankAccountNo,
+          postingDate: postingDate,
+          documentNumber: paymentReference || '', // Same Document No.
+          amount: -absAmount, // Negative = Credit
+          description: desc,
+          externalDocumentNumber: payrollMonth // Same External Document No.
+        };
+
+        console.log(`Creating BANK ACCOUNT journal line for ${vendorName}:`, bankLine);
+
+        const bankResponse = await axios.post(journalLinesUrl, bankLine, {
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        console.log(`✅ Bank Account line created for ${vendorName}`);
+
+        results.push({
+          vendorNo,
+          vendorName,
+          amount: absAmount,
+          vendorLineId: (vendorResponse.data as any).id,
+          bankLineId: (bankResponse.data as any).id,
+          success: true
+        });
+      } catch (empError: any) {
+        console.error(`Error creating journal lines for ${vendorName}:`, empError.response?.data || empError.message);
+        errors.push({
+          vendorNo,
+          vendorName,
+          error: empError.response?.data?.error?.message || empError.message
+        });
+      }
+    }
+
+    const paymentUrl = 'https://businesscentral.dynamics.com/9f4e2976-b07e-4f8f-9c78-055f6c855a11/Production?company=ARK%20Group%20Live&page=39&filter=%27Gen.%20Journal%20Line%27.%27Journal%20Template%20Name%27%20IS%20%27GENERAL%27%20AND%20%27Gen.%20Journal%20Line%27.%27Journal%20Batch%20Name%27%20IS%20%27PAYMENT%27&dc=0';
+
+    res.json({
+      success: errors.length === 0,
+      message: errors.length === 0 
+        ? `Successfully created journal lines for ${results.length} employees`
+        : `Created journal lines for ${results.length} employees, ${errors.length} failed`,
+      results,
+      errors,
+      paymentUrl
+    });
+  } catch (error: any) {
+    console.error('Error creating salary payment journal lines:', error.response?.data || error.message);
+    res.status(error.response?.status || 500).json({ 
+      error: 'Failed to create salary payment journal lines',
+      details: error.response?.data || error.message 
+    });
+  }
+});
+
+/**
  * GET /api/bc/journal-batches
  * Get available journal batches for a template
  * Query params: templateName (default: PAYMENT)

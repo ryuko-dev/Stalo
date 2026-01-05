@@ -258,6 +258,7 @@ export default function Positions() {
   const [newPosition, setNewPosition] = useState<Partial<Position>>({
     Project: '',
     TaskID: '',
+    Fringe_Task: '',
     PositionName: '',
     MonthYear: '',
     AllocationMode: '',
@@ -402,6 +403,7 @@ export default function Positions() {
     setNewPosition({
       Project: '',
       TaskID: '',
+      Fringe_Task: '',
       PositionName: '',
       MonthYear: '',
       AllocationMode: '',
@@ -440,29 +442,30 @@ export default function Positions() {
     return months;
   };
 
-  // Download positions as CSV in table format
+  // Download positions as CSV in table format (uses current filters)
   const downloadPositionsTable = () => {
     const monthColumns = getMonthColumns();
-    const uniquePositions = Array.from(new Set(positions.map(p => `${p.ProjectName || p.Project}|${p.TaskID}|${p.PositionName}|${p.Allocated}`)))
+    const uniquePositions = Array.from(new Set(filteredPositions.map(p => `${p.ProjectName || p.Project}|${p.TaskID}|${p.Fringe_Task || ''}|${p.PositionName}|${p.Allocated}`)))
       .map(key => {
-        const [project, taskId, positionName, allocated] = key.split('|');
-        return { project, taskId, positionName, allocated };
+        const [project, taskId, fringeTask, positionName, allocated] = key.split('|');
+        return { project, taskId, fringeTask, positionName, allocated };
       });
 
     // Create CSV content
-    let csvContent = 'Project,Task ID,Position Name,Allocated';
+    let csvContent = 'Project,Task ID,Fringe Task,Position Name,Allocated';
     monthColumns.forEach(month => {
       csvContent += `,${month}`;
     });
     csvContent += '\n';
 
-    uniquePositions.forEach(({ project, taskId, positionName, allocated }) => {
-      let row = `"${project}","${taskId}","${positionName}","${allocated}"`;
+    uniquePositions.forEach(({ project, taskId, fringeTask, positionName, allocated }) => {
+      let row = `"${project}","${taskId}","${fringeTask}","${positionName}","${allocated}"`;
       
       monthColumns.forEach(month => {
-        const position = positions.find(p => 
+        const position = filteredPositions.find(p => 
           (p.ProjectName || p.Project) === project &&
           p.TaskID === taskId &&
+          (p.Fringe_Task || '') === fringeTask &&
           p.PositionName === positionName &&
           p.Allocated === allocated &&
           p.MonthYear && format(new Date(p.MonthYear), 'MMM yyyy') === month
@@ -484,7 +487,7 @@ export default function Positions() {
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
     
-    showNotification('Positions table downloaded successfully!', 'success');
+    showNotification(`Downloaded ${filteredPositions.length} filtered positions!`, 'success');
   };
 
   // Handle file upload for positions
@@ -502,7 +505,7 @@ export default function Positions() {
         return;
       }
 
-      const monthColumns = lines[0].split(',').slice(4); // Skip first 4 columns
+      const monthColumns = lines[0].split(',').slice(5); // Skip first 5 columns (Project, Task ID, Fringe Task, Position Name, Allocated)
       console.log('Month columns from CSV:', monthColumns);
       
       const monthMap = new Map<string, string>();
@@ -518,23 +521,24 @@ export default function Positions() {
         if (!line) continue;
         
         const values = line.match(/(".*?"|[^,]+)(?=\s*,|\s*$)/g);
-        if (!values || values.length < 4) continue;
+        if (!values || values.length < 5) continue;
         
         const project = values[0].replace(/"/g, '').trim();
         const taskId = values[1].replace(/"/g, '').trim();
-        const positionName = values[2].replace(/"/g, '').trim();
-        const allocated = values[3].replace(/"/g, '').trim();
+        const fringeTask = values[2].replace(/"/g, '').trim();
+        const positionName = values[3].replace(/"/g, '').trim();
+        const allocated = values[4].replace(/"/g, '').trim();
         
         // Find project ID
         const projectObj = projects.find(p => p.Name === project);
         if (!projectObj) continue;
         
         // Process LoE values for each month
-        for (let j = 4; j < values.length && j - 4 < monthColumns.length; j++) {
+        for (let j = 5; j < values.length && j - 5 < monthColumns.length; j++) {
           const loeValue = parseFloat(values[j].replace(/"/g, '').trim()) || 0;
           
           if (loeValue > 0) {
-            const monthColumn = monthColumns[j - 4].trim();
+            const monthColumn = monthColumns[j - 5].trim();
             console.log('Parsing month column:', monthColumn);
             
             // Parse month column (format is "MMM-yy" like "Jan-26")
@@ -556,6 +560,7 @@ export default function Positions() {
             newPositions.push({
               Project: projectObj.ID,
               TaskID: taskId,
+              Fringe_Task: fringeTask,
               PositionName: positionName,
               MonthYear: isoString,
               AllocationMode: projectObj.AllocationMode || '%',
@@ -566,11 +571,47 @@ export default function Positions() {
         }
       }
 
-      // Create positions in batch
+      // Process positions - update existing or create new
       if (newPositions.length > 0) {
-        Promise.all(newPositions.map(np => createMutation.mutateAsync(np)))
+        const updates: Promise<unknown>[] = [];
+        const creates: Promise<unknown>[] = [];
+        
+        newPositions.forEach(np => {
+          // Check if position already exists (match by Project, TaskID, PositionName, and MonthYear)
+          const existingPosition = positions.find(p => 
+            p.Project === np.Project &&
+            p.TaskID === np.TaskID &&
+            p.PositionName === np.PositionName &&
+            p.MonthYear && np.MonthYear && 
+            new Date(p.MonthYear).getFullYear() === new Date(np.MonthYear).getFullYear() &&
+            new Date(p.MonthYear).getMonth() === new Date(np.MonthYear).getMonth()
+          );
+          
+          if (existingPosition) {
+            // Update existing position
+            updates.push(updateMutation.mutateAsync({ 
+              id: existingPosition.ID, 
+              payload: { 
+                LoE: np.LoE, 
+                Allocated: np.Allocated,
+                Fringe_Task: np.Fringe_Task,
+                AllocationMode: np.AllocationMode
+              } 
+            }));
+          } else {
+            // Create new position
+            creates.push(createMutation.mutateAsync(np));
+          }
+        });
+        
+        Promise.all([...updates, ...creates])
           .then(() => {
-            showNotification(`Successfully uploaded ${newPositions.length} positions!`, 'success');
+            const message = updates.length > 0 && creates.length > 0
+              ? `Updated ${updates.length} and created ${creates.length} positions!`
+              : updates.length > 0
+                ? `Updated ${updates.length} positions!`
+                : `Created ${creates.length} positions!`;
+            showNotification(message, 'success');
           })
           .catch((error) => {
             showNotification(`Error uploading positions: ${error.message}`, 'error');
@@ -641,6 +682,9 @@ export default function Positions() {
               <Box sx={{ flex: '0 1 100px', minWidth: '100px' }}>
                 <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#666' }}>TASK ID *</Typography>
               </Box>
+              <Box sx={{ flex: '0 1 100px', minWidth: '100px' }}>
+                <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#666' }}>FRINGE TASK</Typography>
+              </Box>
               <Box sx={{ flex: '1 1 200px', minWidth: '200px' }}>
                 <Typography variant="caption" sx={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#666' }}>POSITION *</Typography>
               </Box>
@@ -692,6 +736,16 @@ export default function Positions() {
                   placeholder="Task ID"
                   value={newPosition.TaskID || ''}
                   onChange={(e) => setNewPosition({ ...newPosition, TaskID: e.target.value })}
+                  sx={{ '& .MuiInputBase-input': { fontSize: '0.75rem' } }}
+                />
+              </Box>
+              <Box sx={{ flex: '0 1 100px', minWidth: '100px' }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  placeholder="Fringe Task"
+                  value={newPosition.Fringe_Task || ''}
+                  onChange={(e) => setNewPosition({ ...newPosition, Fringe_Task: e.target.value })}
                   sx={{ '& .MuiInputBase-input': { fontSize: '0.75rem' } }}
                 />
               </Box>
@@ -864,6 +918,7 @@ export default function Positions() {
                   <TableRow>
                     <TableCell sx={{ fontSize: '0.7rem', fontWeight: 'bold', p: 0.5 }}>Project</TableCell>
                     <TableCell sx={{ fontSize: '0.7rem', fontWeight: 'bold', p: 0.5 }}>Task ID</TableCell>
+                    <TableCell sx={{ fontSize: '0.7rem', fontWeight: 'bold', p: 0.5 }}>Fringe Task</TableCell>
                     <TableCell sx={{ fontSize: '0.7rem', fontWeight: 'bold', p: 0.5 }}>Position</TableCell>
                     <TableCell sx={{ fontSize: '0.7rem', fontWeight: 'bold', p: 0.5 }}>Month</TableCell>
                     <TableCell sx={{ fontSize: '0.7rem', fontWeight: 'bold', p: 0.5 }}>Mode</TableCell>
@@ -876,7 +931,7 @@ export default function Positions() {
                 <TableBody>
                   {filteredPositions.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} align="center" sx={{ py: 2 }}>
+                      <TableCell colSpan={10} align="center" sx={{ py: 2 }}>
                         <Typography variant="body2" color="text.secondary">
                           {positions.length === 0 ? 'No positions found. Create your first position above!' : 'No positions match your filters.'}
                         </Typography>
@@ -893,6 +948,11 @@ export default function Positions() {
                         <TableCell sx={{ p: 0.5 }}>
                           <Typography variant="caption" sx={{ fontSize: '0.7rem' }}>
                             {position.TaskID}
+                          </Typography>
+                        </TableCell>
+                        <TableCell sx={{ p: 0.5 }}>
+                          <Typography variant="caption" sx={{ fontSize: '0.7rem' }}>
+                            {position.Fringe_Task}
                           </Typography>
                         </TableCell>
                         <TableCell sx={{ p: 0.5 }}>
@@ -1054,6 +1114,16 @@ export default function Positions() {
                   onBlur={(e) => {
                     if (e.target.value !== editingPosition.TaskID) {
                       updateMutation.mutate({ id: editingPosition.ID, payload: { TaskID: e.target.value } });
+                    }
+                  }}
+                />
+                <TextField
+                  label="Fringe Task"
+                  fullWidth
+                  defaultValue={editingPosition.Fringe_Task || ''}
+                  onBlur={(e) => {
+                    if (e.target.value !== (editingPosition.Fringe_Task || '')) {
+                      updateMutation.mutate({ id: editingPosition.ID, payload: { Fringe_Task: e.target.value } });
                     }
                   }}
                 />

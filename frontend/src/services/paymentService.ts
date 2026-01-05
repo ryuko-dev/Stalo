@@ -229,3 +229,67 @@ export async function createPrepaymentJournalLine(
     bankCurrencyCode
   });
 }
+
+/**
+ * Vendor card type from BC API (Vendor_Card_Excel)
+ */
+export interface VendorCard {
+  No: string;
+  Name: string;
+  Currency_Code: string;
+}
+
+/**
+ * Fetch vendor cards (full list) for employee selection
+ */
+export async function getVendorCards(): Promise<VendorCard[]> {
+  try {
+    const response = await api.get('/bc/vendor-cards');
+    return response.data.vendors || [];
+  } catch (error) {
+    console.error('Error fetching vendor cards:', error);
+    throw error;
+  }
+}
+
+/**
+ * Employee entry for salary payment
+ */
+export interface SalaryEmployee {
+  vendorNo: string;
+  vendorName: string;
+  paymentReference: string;
+  amount: number;
+}
+
+/**
+ * Create payment journal lines for salary payments (multiple employees)
+ */
+export async function createSalaryPaymentJournalLines(
+  bankAccountNo: string,
+  bankCurrencyCode: string,
+  payrollMonth: string, // Format: MM/YYYY
+  employees: SalaryEmployee[]
+): Promise<{
+  success: boolean;
+  message: string;
+  results?: any[];
+  errors?: any[];
+  paymentUrl?: string;
+}> {
+  try {
+    const response = await api.post('/bc/salary-payment-journal-lines', {
+      bankAccountNo,
+      bankCurrencyCode,
+      payrollMonth,
+      employees
+    });
+    return response.data;
+  } catch (error: any) {
+    console.error('Error creating salary payment journal lines:', error);
+    return {
+      success: false,
+      message: error.response?.data?.error || 'Failed to create salary payment journal lines',
+    };
+  }
+}

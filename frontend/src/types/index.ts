@@ -14,6 +14,7 @@ export interface Position {
   ID: string;
   Project: string;
   TaskID: string;
+  Fringe_Task: string;
   PositionName: string;
   MonthYear: string;
   AllocationMode: string;

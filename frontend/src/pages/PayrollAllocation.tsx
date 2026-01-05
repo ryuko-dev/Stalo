@@ -385,11 +385,12 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
           const project = payrollProjects?.find(p => p.ID === projectId);
           const projectName = project?.Name || 'Unknown Project';
           
-          // Find TaskID for this resource-project combination
+          // Find TaskID and Fringe_Task for this resource-project combination
           const allocation = payrollAllocations?.find(
             a => a.ResourceID === resource.ResourceID && a.ProjectID === projectId
           );
           const taskId = allocation?.TaskID || '';
+          const fringeTaskId = allocation?.Fringe_Task || ''; // Use Fringe_Task for SS, Employer Tax, and Fringe Benefit
           
           // Calculate allocation percentage based on hours (project hours / total hours)
           const allocationPercent = totalHours > 0 ? allocationHours / totalHours : 0;
@@ -460,7 +461,7 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
                 Amount: allocatedFringeBenefit.toFixed(2),
                 Project_Quantity: '1',
                 Project_No: projectName,
-                Project_Task_No: salExpCode.startsWith('6') ? taskId : ''
+                Project_Task_No: salExpCode.startsWith('6') ? (fringeTaskId || taskId) : ''
               });
             }
             
@@ -503,7 +504,7 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
                 Amount: allocatedAmount.toFixed(2),
                 Project_Quantity: '1',
                 Project_No: projectName,
-                Project_Task_No: ssExpCode.startsWith('6') ? taskId : ''
+                Project_Task_No: ssExpCode.startsWith('6') ? (fringeTaskId || taskId) : ''
               });
             }
             
@@ -589,7 +590,7 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
                 Amount: allocatedAmount.toFixed(2),
                 Project_Quantity: '1',
                 Project_No: projectName,
-                Project_Task_No: taxExpCode.startsWith('6') ? taskId : ''
+                Project_Task_No: taxExpCode.startsWith('6') ? (fringeTaskId || taskId) : ''
               });
             }
             

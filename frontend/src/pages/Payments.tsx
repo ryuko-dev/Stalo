@@ -35,6 +35,8 @@ import {
   FormControl,
   InputLabel,
   Select,
+  Autocomplete,
+  Divider,
 } from '@mui/material';
 import { 
   Folder as FolderIcon, 
@@ -42,8 +44,10 @@ import {
   Search as SearchIcon,
   Payment as PaymentIcon,
   Visibility as VisibilityIcon,
+  Add as AddIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
-import { getPersonnelExpenses, getPrepayments, getPurchaseInvoices, getSalaryPayments, getVendors, createPaymentJournalLine, createPersonnelPaymentJournalLine, createPrepaymentJournalLine, getBankAccounts, type BankAccount } from '../services/paymentService';
+import { getPersonnelExpenses, getPrepayments, getPurchaseInvoices, getSalaryPayments, getVendors, createPaymentJournalLine, createPersonnelPaymentJournalLine, createPrepaymentJournalLine, getBankAccounts, getVendorCards, createSalaryPaymentJournalLines, type BankAccount, type VendorCard, type SalaryEmployee } from '../services/paymentService';
 import { convertToUSD } from '../services/exchangeRateService';
 import type { PersonnelExpense, Prepayment, PurchaseInvoice, SalaryPayment } from '../types/payments';
 
@@ -108,6 +112,16 @@ export default function Payments() {
   const [selectedBankAccount, setSelectedBankAccount] = useState<string>('');
   const [paymentReference, setPaymentReference] = useState<string>('');
   const [loadingBankAccounts, setLoadingBankAccounts] = useState(false);
+
+  // Salary Payment Dialog state
+  const [salaryPaymentDialogOpen, setSalaryPaymentDialogOpen] = useState(false);
+  const [vendorCards, setVendorCards] = useState<VendorCard[]>([]);
+  const [loadingVendorCards, setLoadingVendorCards] = useState(false);
+  const [salaryPayrollMonth, setSalaryPayrollMonth] = useState<string>('');
+  const [salaryEmployees, setSalaryEmployees] = useState<SalaryEmployee[]>([]);
+  const [selectedVendorCard, setSelectedVendorCard] = useState<VendorCard | null>(null);
+  const [newEmployeePaymentRef, setNewEmployeePaymentRef] = useState<string>('');
+  const [newEmployeeAmount, setNewEmployeeAmount] = useState<string>('');
 
   // Data states
   const [personnelExpenses, setPersonnelExpenses] = useState<PersonnelExpense[]>([]);
@@ -692,10 +706,181 @@ export default function Payments() {
     handleCloseSalaryContextMenu();
   };
 
-  const handleSalaryPayClick = () => {
-    const paymentUrl = 'https://businesscentral.dynamics.com/9f4e2976-b07e-4f8f-9c78-055f6c855a11/Production?company=ARK%20Group%20Live&page=256&filter=%27Gen.%20Journal%20Line%27.%27Journal%20Template%20Name%27%20IS%20%27PAYMENT%27&dc=0';
-    window.open(paymentUrl, '_blank');
+  const handleSalaryPayClick = async () => {
     handleCloseSalaryContextMenu();
+    
+    // Open salary payment dialog
+    setSalaryPaymentDialogOpen(true);
+    setSelectedBankAccount('');
+    setSalaryPayrollMonth('');
+    setSalaryEmployees([]);
+    setSelectedVendorCard(null);
+    setNewEmployeePaymentRef('');
+    setNewEmployeeAmount('');
+
+    // Load bank accounts if not already loaded
+    if (bankAccounts.length === 0) {
+      setLoadingBankAccounts(true);
+      try {
+        const accounts = await getBankAccounts();
+        setBankAccounts(accounts);
+      } catch (err) {
+        console.error('Error loading bank accounts:', err);
+        setSnackbar({
+          open: true,
+          message: 'Failed to load bank accounts',
+          severity: 'error'
+        });
+      } finally {
+        setLoadingBankAccounts(false);
+      }
+    }
+
+    // Load vendor cards if not already loaded
+    if (vendorCards.length === 0) {
+      setLoadingVendorCards(true);
+      try {
+        const cards = await getVendorCards();
+        setVendorCards(cards);
+      } catch (err) {
+        console.error('Error loading vendor cards:', err);
+        setSnackbar({
+          open: true,
+          message: 'Failed to load vendor list',
+          severity: 'error'
+        });
+      } finally {
+        setLoadingVendorCards(false);
+      }
+    }
+  };
+
+  const handleSalaryPaymentDialogClose = () => {
+    setSalaryPaymentDialogOpen(false);
+    setSalaryPayrollMonth('');
+    setSalaryEmployees([]);
+    setSelectedVendorCard(null);
+    setNewEmployeePaymentRef('');
+    setNewEmployeeAmount('');
+    setSelectedBankAccount('');
+  };
+
+  const handleAddEmployee = () => {
+    if (!selectedVendorCard || !newEmployeeAmount || parseFloat(newEmployeeAmount) <= 0) {
+      setSnackbar({
+        open: true,
+        message: 'Please select an employee and enter a valid amount',
+        severity: 'error'
+      });
+      return;
+    }
+
+    // Check if employee already added
+    if (salaryEmployees.some(e => e.vendorNo === selectedVendorCard.No)) {
+      setSnackbar({
+        open: true,
+        message: 'This employee has already been added',
+        severity: 'error'
+      });
+      return;
+    }
+
+    const newEmployee: SalaryEmployee = {
+      vendorNo: selectedVendorCard.No,
+      vendorName: selectedVendorCard.Name,
+      paymentReference: newEmployeePaymentRef,
+      amount: parseFloat(newEmployeeAmount)
+    };
+
+    setSalaryEmployees([...salaryEmployees, newEmployee]);
+    setSelectedVendorCard(null);
+    setNewEmployeePaymentRef('');
+    setNewEmployeeAmount('');
+  };
+
+  const handleRemoveEmployee = (vendorNo: string) => {
+    setSalaryEmployees(salaryEmployees.filter(e => e.vendorNo !== vendorNo));
+  };
+
+  const handleSalaryPaymentSubmit = async () => {
+    if (!selectedBankAccount) {
+      setSnackbar({
+        open: true,
+        message: 'Please select a bank account',
+        severity: 'error'
+      });
+      return;
+    }
+
+    if (!salaryPayrollMonth) {
+      setSnackbar({
+        open: true,
+        message: 'Please enter the payroll month',
+        severity: 'error'
+      });
+      return;
+    }
+
+    if (salaryEmployees.length === 0) {
+      setSnackbar({
+        open: true,
+        message: 'Please add at least one employee',
+        severity: 'error'
+      });
+      return;
+    }
+
+    const selectedBank = bankAccounts.find(b => b.No === selectedBankAccount);
+    if (!selectedBank) {
+      setSnackbar({
+        open: true,
+        message: 'Invalid bank account selected',
+        severity: 'error'
+      });
+      return;
+    }
+
+    setSalaryPaymentDialogOpen(false);
+    setCreatingPayment(true);
+
+    try {
+      const result = await createSalaryPaymentJournalLines(
+        selectedBankAccount,
+        selectedBank.Currency_Code,
+        salaryPayrollMonth,
+        salaryEmployees
+      );
+
+      if (result.success) {
+        setSnackbar({
+          open: true,
+          message: result.message || `Payment journal lines created for ${salaryEmployees.length} employees`,
+          severity: 'success'
+        });
+        
+        if (result.paymentUrl) {
+          window.open(result.paymentUrl, '_blank');
+        }
+      } else {
+        setSnackbar({
+          open: true,
+          message: result.message || 'Failed to create payment journal lines',
+          severity: 'error'
+        });
+      }
+    } catch (err) {
+      console.error('Error creating salary payment journal lines:', err);
+      setSnackbar({
+        open: true,
+        message: 'Error creating payment journal lines',
+        severity: 'error'
+      });
+    } finally {
+      setCreatingPayment(false);
+      setSalaryPayrollMonth('');
+      setSalaryEmployees([]);
+      setSelectedBankAccount('');
+    }
   };
 
   // Calculate summary by currency and category
@@ -1455,6 +1640,194 @@ export default function Payments() {
             disabled={!selectedBankAccount || loadingBankAccounts}
           >
             Submit
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Salary Payment Dialog */}
+      <Dialog open={salaryPaymentDialogOpen} onClose={handleSalaryPaymentDialogClose} maxWidth="md" fullWidth>
+        <DialogTitle>Create Salary Payment Journal</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 1 }}>
+            {/* Bank Account Selection */}
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel id="salary-bank-account-label">Bank Account</InputLabel>
+              <Select
+                labelId="salary-bank-account-label"
+                value={selectedBankAccount}
+                label="Bank Account"
+                onChange={(e) => setSelectedBankAccount(e.target.value)}
+                disabled={loadingBankAccounts}
+              >
+                {loadingBankAccounts ? (
+                  <MenuItem disabled>Loading bank accounts...</MenuItem>
+                ) : (
+                  bankAccounts.map((bank) => (
+                    <MenuItem key={bank.No} value={bank.No}>
+                      {bank.Name} {bank.Currency_Code ? `(${bank.Currency_Code})` : ''}
+                    </MenuItem>
+                  ))
+                )}
+              </Select>
+            </FormControl>
+
+            {/* Payroll Month Selection */}
+            <TextField
+              fullWidth
+              label="Payroll Month"
+              value={salaryPayrollMonth}
+              onChange={(e) => setSalaryPayrollMonth(e.target.value)}
+              placeholder="MM/YYYY (e.g., 01/2026)"
+              helperText="This will be used as External Document No. (Vendor Invoice Ref)"
+              sx={{ mb: 3 }}
+            />
+
+            <Divider sx={{ my: 2 }} />
+
+            {/* Employee Selection Section */}
+            <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>
+              Add Employees
+            </Typography>
+
+            <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'flex-start' }}>
+              <Autocomplete
+                sx={{ flex: 2 }}
+                options={vendorCards}
+                getOptionLabel={(option) => `${option.No} - ${option.Name}`}
+                value={selectedVendorCard}
+                onChange={(_, newValue) => setSelectedVendorCard(newValue)}
+                loading={loadingVendorCards}
+                filterOptions={(options, { inputValue }) => {
+                  const filterValue = inputValue.toLowerCase();
+                  return options.filter(
+                    option =>
+                      option.No.toLowerCase().includes(filterValue) ||
+                      option.Name.toLowerCase().includes(filterValue)
+                  ).slice(0, 50); // Limit to 50 results for performance
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Employee (Vendor)"
+                    placeholder="Search by ID or name..."
+                    InputProps={{
+                      ...params.InputProps,
+                      endAdornment: (
+                        <>
+                          {loadingVendorCards ? <CircularProgress color="inherit" size={20} /> : null}
+                          {params.InputProps.endAdornment}
+                        </>
+                      ),
+                    }}
+                  />
+                )}
+                renderOption={(props, option) => {
+                  const { key, ...otherProps } = props;
+                  return (
+                    <li key={key} {...otherProps}>
+                      <Box>
+                        <Typography variant="body2">{option.No} - {option.Name}</Typography>
+                        {option.Currency_Code && (
+                          <Typography variant="caption" color="text.secondary">
+                            Currency: {option.Currency_Code}
+                          </Typography>
+                        )}
+                      </Box>
+                    </li>
+                  );
+                }}
+              />
+              <TextField
+                sx={{ flex: 1 }}
+                label="Payment Reference"
+                value={newEmployeePaymentRef}
+                onChange={(e) => setNewEmployeePaymentRef(e.target.value)}
+                placeholder="Document No."
+                size="medium"
+              />
+              <TextField
+                sx={{ flex: 1 }}
+                label="Amount"
+                type="number"
+                value={newEmployeeAmount}
+                onChange={(e) => setNewEmployeeAmount(e.target.value)}
+                placeholder="0.00"
+                size="medium"
+                InputProps={{
+                  inputProps: { min: 0, step: 0.01 }
+                }}
+              />
+              <Button
+                variant="outlined"
+                startIcon={<AddIcon />}
+                onClick={handleAddEmployee}
+                disabled={!selectedVendorCard || !newEmployeeAmount}
+                sx={{ height: 56 }}
+              >
+                Add
+              </Button>
+            </Box>
+
+            {/* Added Employees List */}
+            {salaryEmployees.length > 0 && (
+              <>
+                <Divider sx={{ my: 2 }} />
+                <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>
+                  Employees to Pay ({salaryEmployees.length})
+                </Typography>
+                <TableContainer component={Paper} variant="outlined">
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow sx={{ bgcolor: 'action.hover' }}>
+                        <TableCell>Vendor ID</TableCell>
+                        <TableCell>Employee Name</TableCell>
+                        <TableCell>Payment Ref</TableCell>
+                        <TableCell align="right">Amount</TableCell>
+                        <TableCell align="center">Action</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {salaryEmployees.map((employee) => (
+                        <TableRow key={employee.vendorNo}>
+                          <TableCell>{employee.vendorNo}</TableCell>
+                          <TableCell>{employee.vendorName}</TableCell>
+                          <TableCell>{employee.paymentReference || '-'}</TableCell>
+                          <TableCell align="right">{employee.amount.toLocaleString()}</TableCell>
+                          <TableCell align="center">
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => handleRemoveEmployee(employee.vendorNo)}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      <TableRow sx={{ bgcolor: 'action.selected' }}>
+                        <TableCell colSpan={3} align="right" sx={{ fontWeight: 'bold' }}>
+                          Total:
+                        </TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 'bold' }}>
+                          {salaryEmployees.reduce((sum, e) => sum + e.amount, 0).toLocaleString()}
+                        </TableCell>
+                        <TableCell />
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleSalaryPaymentDialogClose}>Cancel</Button>
+          <Button 
+            onClick={handleSalaryPaymentSubmit} 
+            variant="contained" 
+            disabled={!selectedBankAccount || !salaryPayrollMonth || salaryEmployees.length === 0}
+          >
+            Submit ({salaryEmployees.length} employees)
           </Button>
         </DialogActions>
       </Dialog>
