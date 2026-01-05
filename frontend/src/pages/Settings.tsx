@@ -726,16 +726,18 @@ export default function Settings() {
                                   color="primary" 
                                   onClick={handleEditSave}
                                   sx={{ p: 0.5 }}
+                                  title="Save Changes"
                                 >
-                                  <DeleteIcon fontSize="small" />
+                                  <SaveIcon fontSize="small" />
                                 </IconButton>
                                 <IconButton 
                                   size="small" 
                                   color="secondary" 
                                   onClick={handleEditCancel}
                                   sx={{ p: 0.5 }}
+                                  title="Cancel"
                                 >
-                                  <EditIcon fontSize="small" />
+                                  <ExitIcon fontSize="small" />
                                 </IconButton>
                               </Box>
                             ) : (
@@ -746,6 +748,7 @@ export default function Settings() {
                                   onClick={() => handleEditClick(user)}
                                   disabled={user.EmailAddress.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()}
                                   sx={{ p: 0.5 }}
+                                  title="Edit User"
                                 >
                                   <EditIcon fontSize="small" />
                                 </IconButton>

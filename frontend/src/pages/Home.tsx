@@ -5,6 +5,7 @@ import { Download, FilterList, Close, Timeline } from '@mui/icons-material';
 import { addMonths, format, isAfter, isBefore, isWithinInterval, startOfMonth, endOfMonth } from 'date-fns';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getResources, getPositions, getProjects, createAllocation, getAllocations, deleteAllocation, createDragAllocation, validatePositions } from '../services/staloService';
+import { usePermissions } from '../contexts/PermissionsContext';
 import type { Project } from '../types';
 import type { Resource } from '../types';
 import type { Position } from '../types';
@@ -38,6 +39,10 @@ interface MonthlyAllocationDialog {
 export default function Home({ selectedDate }: HomeProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { isViewer, isBudgetManager } = usePermissions();
+  
+  // Check if user can edit (not a viewer or budget manager)
+  const canEdit = !isViewer && !isBudgetManager;
   
   // Quarter filter state (default: 1Q = 3 months)
   const [quarterFilter, setQuarterFilter] = useState<'1Q' | '2Q' | '3Q'>('1Q');
@@ -191,6 +196,11 @@ export default function Home({ selectedDate }: HomeProps) {
 
   // Handle drag start
   const handleDragStart = (event: DragStartEvent) => {
+    // Prevent drag for viewers and budget managers
+    if (!canEdit) {
+      return;
+    }
+    
     const { active } = event;
     console.log('Drag start event:', { activeId: active.id });
     setActiveId(active.id as string);
@@ -203,6 +213,13 @@ export default function Home({ selectedDate }: HomeProps) {
 
   // Handle drag end
   const handleDragEnd = (event: DragEndEvent) => {
+    // Prevent drag for viewers and budget managers
+    if (!canEdit) {
+      setActiveId(null);
+      setDraggedPosition(null);
+      return;
+    }
+    
     const { over } = event;
     console.log('Drag end event:', { over, draggedPosition });
     
@@ -293,6 +310,7 @@ export default function Home({ selectedDate }: HomeProps) {
       isDragging,
     } = useDraggable({
       id: position.ID,
+      disabled: !canEdit, // Disable drag for viewers and budget managers
     });
 
     const style = {
@@ -304,8 +322,8 @@ export default function Home({ selectedDate }: HomeProps) {
       <Box 
         ref={setNodeRef}
         style={style}
-        {...listeners}
-        {...attributes}
+        {...(canEdit ? listeners : {})}
+        {...(canEdit ? attributes : {})}
         sx={{ 
           backgroundColor: '#dbeafe',
           p: 0.5,
@@ -317,11 +335,12 @@ export default function Home({ selectedDate }: HomeProps) {
           wordBreak: 'break-word',
           border: '1px solid #93c5fd',
           color: '#1e40af',
-          cursor: isDragging ? 'grabbing' : 'grab',
-          '&:hover': {
+          cursor: canEdit ? (isDragging ? 'grabbing' : 'grab') : 'default',
+          opacity: canEdit ? 1 : 0.6,
+          '&:hover': canEdit ? {
             backgroundColor: '#bfdbfe',
             boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-          },
+          } : {},
         }}
       >
         {position.ProjectName} - {position.PositionName} - {formatValue(position.LoE, position.AllocationMode || '%')}
@@ -339,20 +358,20 @@ export default function Home({ selectedDate }: HomeProps) {
   }) => {
     const { isOver, setNodeRef } = useDroppable({
       id: `cell-${resourceId}-${monthIndex}`,
-      disabled: !isActive || (isValidDropTarget === false),
+      disabled: !isActive || (isValidDropTarget === false) || !canEdit,
     });
 
     return (
       <TableCell 
         ref={setNodeRef}
         align="center"
-        onClick={() => isActive && handleCellClick(resourceId, monthIndex)}
+        onClick={() => isActive && canEdit && handleCellClick(resourceId, monthIndex)}
         sx={{ 
-          cursor: isActive ? 'pointer' : 'default',
+          cursor: (isActive && canEdit) ? 'pointer' : 'default',
           backgroundColor: isActive ? (
             isValidDropTarget === false ? '#ffebee' : (isOver ? '#e3f2fd' : 'white')
           ) : 'white',
-          '&:hover': isActive ? { 
+          '&:hover': (isActive && canEdit) ? { 
             backgroundColor: isValidDropTarget === false ? '#ffebee' : (isOver ? '#e3f2fd' : '#f5f5f5') 
           } : {},
           p: 0.5,
@@ -520,6 +539,11 @@ export default function Home({ selectedDate }: HomeProps) {
 
   // Handle cell click
   const handleCellClick = (resourceId: string, monthIndex: number) => {
+    // Block viewers and budget managers from creating allocations
+    if (!canEdit) {
+      return;
+    }
+    
     const month = months[monthIndex];
     const monthYear = format(month, 'MMMM yyyy');
     
