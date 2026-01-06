@@ -1317,7 +1317,25 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
                         }}
                       >
                         <TableCell sx={{ fontSize: '0.7rem', py: 0, px: 1, height: '24px', border: '1px solid #e0e0e0', minWidth: '110px', width: '110px', backgroundColor: '#f3f8ff' }}>{resource.ResourceName}</TableCell>
-                        <TableCell sx={{ fontSize: '0.7rem', py: 0, px: 1, height: '24px', border: '1px solid #e0e0e0', width: '40px', backgroundColor: '#f3f8ff' }}>{workingDays}</TableCell>
+                        <TableCell sx={{ fontSize: '0.7rem', py: 0, px: 1, height: '24px', border: '1px solid #e0e0e0', width: '40px', backgroundColor: '#f3f8ff' }}>
+                          <input
+                            type="number"
+                            step="1"
+                            value={getFieldValue(resource.ResourceID, 'WorkingDays', workingDays)}
+                            onChange={(e) => handleFieldChange(resource.ResourceID, 'WorkingDays', e.target.value ? e.target.value : null)}
+                            disabled={isLocked}
+                            style={{
+                              width: '100%',
+                              border: 'none',
+                              outline: 'none',
+                              background: 'transparent',
+                              fontSize: '0.65rem',
+                              height: '20px',
+                              padding: '0',
+                              color: 'inherit'
+                            }}
+                          />
+                        </TableCell>
                         <TableCell sx={{ fontSize: '0.7rem', py: 0, px: 1, height: '24px', border: '1px solid #e0e0e0', width: '40px', backgroundColor: '#f3f8ff' }}>
                           <input
                             type="text"
