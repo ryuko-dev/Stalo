@@ -289,3 +289,15 @@ export const lockPayrollMonth = async (month: string, locked: boolean): Promise<
   const response = await api.patch('/payroll/lock-month', { month, locked });
   return response.data;
 };
+
+// Business Central - Posted Sales Invoices
+export const getPostedSalesInvoices = async (params?: {
+  $top?: number;
+  $skip?: number;
+  $filter?: string;
+  $select?: string;
+}): Promise<{ invoices: any[]; count: number }> => {
+  const response = await api.get('/bc/posted-sales-invoices', { params });
+  return response.data;
+};
+

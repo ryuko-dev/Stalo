@@ -813,6 +813,166 @@ router.post('/payment-journal-line', async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/bc/customer-payment-journal-line
+ * Create payment journal lines for receiving customer payment (receivables)
+ * Creates TWO lines: one for Customer (credit), one for Bank Account (debit)
+ * Body: { customerNo, customerName, amount, documentNo, description, invoiceNo, currencyCode, bankAccountNo, paymentReference, bankCurrencyCode }
+ */
+router.post('/customer-payment-journal-line', async (req: Request, res: Response) => {
+  try {
+    const { customerNo, customerName, amount, documentNo, description, invoiceNo, currencyCode, bankAccountNo, paymentReference, bankCurrencyCode } = req.body;
+
+    console.log('Customer payment journal line request received:', {
+      customerNo,
+      customerName,
+      amount,
+      documentNo,
+      description,
+      invoiceNo,
+      currencyCode,
+      bankAccountNo,
+      paymentReference,
+      bankCurrencyCode
+    });
+
+    if (!customerNo || !amount || !bankAccountNo) {
+      return res.status(400).json({ error: 'customerNo, amount, and bankAccountNo are required' });
+    }
+
+    // Use standard BC API v2.0 for journals
+    const token = await getAccessToken();
+    const bcApiUrl = `https://api.businesscentral.dynamics.com/v2.0/${BC_TENANT_ID}/Production/api/v2.0/companies`;
+    
+    // First, get the company ID
+    let companyId: string;
+    try {
+      const companiesResponse = await axios.get(bcApiUrl, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const companies = (companiesResponse.data as any).value || [];
+      const company = companies.find((c: any) => c.name === 'ARK Group Live' || c.displayName === 'ARK Group Live');
+      if (!company) {
+        return res.status(404).json({ error: 'Company not found' });
+      }
+      companyId = company.id;
+    } catch (companyError: any) {
+      console.error('Error fetching companies:', companyError.response?.data || companyError.message);
+      return res.status(500).json({ error: 'Failed to fetch company', details: companyError.response?.data });
+    }
+
+    // Get or create CASHRECPT journal batch (Cash Receipt Journal)
+    const journalsUrl = `https://api.businesscentral.dynamics.com/v2.0/${BC_TENANT_ID}/Production/api/v2.0/companies(${companyId})/journals`;
+    let journalId: string;
+    
+    try {
+      const journalsResponse = await axios.get(journalsUrl, {
+        headers: { 'Authorization': `Bearer ${token}` },
+        params: { $filter: "code eq 'CASHRECPT'" }
+      });
+      const journals = (journalsResponse.data as any).value || [];
+      
+      if (journals.length > 0) {
+        journalId = journals[0].id;
+      } else {
+        // Create new journal if not found
+        const createJournalResponse = await axios.post(journalsUrl, {
+          code: 'CASHRECPT',
+          displayName: 'Cash Receipt Journal'
+        }, {
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        journalId = (createJournalResponse.data as any).id;
+      }
+    } catch (journalError: any) {
+      console.error('Error with journals:', journalError.response?.data || journalError.message);
+      return res.status(500).json({ error: 'Failed to access cash receipt journal', details: journalError.response?.data });
+    }
+
+    const journalLinesUrl = `https://api.businesscentral.dynamics.com/v2.0/${BC_TENANT_ID}/Production/api/v2.0/companies(${companyId})/journals(${journalId})/journalLines`;
+    
+    const postingDate = new Date().toISOString().split('T')[0];
+    const absAmount = Math.abs(amount);
+
+    // LINE 1: Customer line (CREDIT - negative amount since we're receiving money)
+    // Document No = Invoice No, Description = Description from invoice, External Doc = Invoice No
+    // Note: Currency is determined by the customer/bank account setup in BC, not passed via API
+    const customerLine: any = {
+      accountType: 'Customer',
+      accountNumber: customerNo,
+      postingDate: postingDate,
+      documentNumber: invoiceNo || documentNo || '', // Document No = Invoice No
+      amount: -absAmount, // Negative = Credit (receiving money reduces customer balance)
+      description: description || `Receipt from ${customerName || customerNo}`,
+      externalDocumentNumber: invoiceNo || '' // Vendor Invoice Ref = Invoice No
+    };
+
+    console.log('Creating CUSTOMER journal line (CREDIT):', customerLine);
+
+    const customerResponse = await axios.post(journalLinesUrl, customerLine, {
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    console.log('✅ Customer line created:', customerResponse.data);
+
+    // LINE 2: Bank Account line (DEBIT - positive amount since we're receiving money)
+    // Note: Currency is determined by the bank account setup in BC, not passed via API
+    const bankLine: any = {
+      accountType: 'Bank Account',
+      accountNumber: bankAccountNo,
+      postingDate: postingDate,
+      documentNumber: invoiceNo || documentNo || '', // Same Document No.
+      amount: absAmount, // Positive = Debit (bank balance increases)
+      description: description || `Receipt from ${customerName || customerNo}`,
+      externalDocumentNumber: invoiceNo || '' // Same External Document No.
+    };
+
+    console.log('Creating BANK ACCOUNT journal line (DEBIT):', bankLine);
+
+    const bankResponse = await axios.post(journalLinesUrl, bankLine, {
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    console.log('✅ Bank Account line created:', bankResponse.data);
+    
+    // Return the URL to open the Cash Receipt Journal page filtered to CASHRECPT batch
+    const paymentUrl = `https://businesscentral.dynamics.com/9f4e2976-b07e-4f8f-9c78-055f6c855a11/Production?company=ARK%20Group%20Live&page=39&filter=%27Gen.%20Journal%20Line%27.%27Journal%20Template%20Name%27%20IS%20%27GENERAL%27%20AND%20%27Gen.%20Journal%20Line%27.%27Journal%20Batch%20Name%27%20IS%20%27CASHRECPT%27&dc=0`;
+    
+    res.json({ 
+      success: true, 
+      message: 'Customer payment journal lines created successfully (Customer credit + Bank debit)',
+      customerLineId: (customerResponse.data as any).id,
+      bankLineId: (bankResponse.data as any).id,
+      paymentUrl
+    });
+  } catch (error: any) {
+    console.error('Error creating customer payment journal line:', error.response?.data || error.message);
+    
+    const bcError = error.response?.data?.error;
+    let errorMessage = 'Failed to create customer payment journal line';
+    
+    if (bcError?.message) {
+      errorMessage = bcError.message;
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    
+    res.status(error.response?.status || 500).json({ 
+      error: errorMessage,
+      details: error.response?.data || error.message 
+    });
+  }
+});
+
+/**
  * GET /api/bc/vendor-cards
  * Fetch full vendor list from Vendor_Card_Excel for employee selection in salary payments
  */
@@ -1037,6 +1197,69 @@ router.get('/journal-batches', async (req: Request, res: Response) => {
     console.error('Error fetching journal batches from BC:', error.response?.data || error.message);
     res.status(error.response?.status || 500).json({ 
       error: 'Failed to fetch journal batches',
+      details: error.response?.data || error.message 
+    });
+  }
+});
+
+/**
+ * GET /api/bc/posted-sales-invoices
+ * Fetch posted sales invoices from Business Central with descriptions from GL entries
+ * Query params: $top, $skip, $filter, $select (optional OData parameters)
+ */
+router.get('/posted-sales-invoices', async (req: Request, res: Response) => {
+  try {
+    const bcClient = await createBCClient();
+    
+    // Forward any OData query parameters
+    const params: any = {};
+    if (req.query.$top) params.$top = req.query.$top;
+    if (req.query.$skip) params.$skip = req.query.$skip;
+    if (req.query.$filter) params.$filter = req.query.$filter;
+    if (req.query.$select) params.$select = req.query.$select;
+    
+    const response = await bcClient.get('/postedsalesinvoices', { params });
+    const invoices = (response.data as any).value || [];
+    
+    // Fetch descriptions from General Ledger Entries for each invoice
+    const invoicesWithDescriptions = await Promise.all(
+      invoices.map(async (invoice: any) => {
+        try {
+          // Get GL entries for this document number
+          const glResponse = await bcClient.get('/General_Ledger_Entries_Excel', {
+            params: {
+              $filter: `Document_No eq '${invoice.No}'`,
+              $select: 'Description',
+              $top: 1
+            }
+          });
+          
+          const glEntries = (glResponse.data as any).value || [];
+          const description = glEntries.length > 0 ? glEntries[0].Description : '';
+          
+          return {
+            ...invoice,
+            Description: description
+          };
+        } catch (glError) {
+          console.warn(`Could not fetch GL entry for invoice ${invoice.No}:`, glError);
+          return {
+            ...invoice,
+            Description: ''
+          };
+        }
+      })
+    );
+    
+    res.json({ 
+      invoices: invoicesWithDescriptions, 
+      count: invoicesWithDescriptions.length,
+      '@odata.context': (response.data as any)['@odata.context']
+    });
+  } catch (error: any) {
+    console.error('Error fetching posted sales invoices from BC:', error.response?.data || error.message);
+    res.status(error.response?.status || 500).json({ 
+      error: 'Failed to fetch posted sales invoices',
       details: error.response?.data || error.message 
     });
   }

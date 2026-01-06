@@ -63,6 +63,7 @@ export default function Resources() {
   const [filterType, setFilterType] = useState<'all' | 'staff' | 'sme'>('all');
   const [filterEntity, setFilterEntity] = useState<string>('all');
   const [editingResource, setEditingResource] = useState<Resource | null>(null);
+  const [itemsToShow, setItemsToShow] = useState<number>(50);
 
   const showNotification = (message: string, severity: 'success' | 'error' = 'success') => {
     setNotification({ open: true, message, severity });
@@ -554,6 +555,19 @@ export default function Resources() {
                     </Select>
                   </FormControl>
                 </Box>
+                <Box sx={{ flex: '0 1 120px', minWidth: '120px' }}>
+                  <FormControl fullWidth size="small">
+                    <Select
+                      value={itemsToShow}
+                      onChange={(e) => setItemsToShow(Number(e.target.value))}
+                      displayEmpty
+                    >
+                      <MenuItem value={50}>50 items</MenuItem>
+                      <MenuItem value={100}>100 items</MenuItem>
+                      <MenuItem value={999999}>All items</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
                 <Box sx={{ flex: '0 1 auto' }}>
                   <Typography variant="body2" color="text.secondary">
                     {filteredResources.length} of {resources.length} resources
@@ -588,7 +602,7 @@ export default function Resources() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredResources.map((resource) => (
+                    filteredResources.slice(0, itemsToShow).map((resource) => (
                       <TableRow key={resource.ID} hover sx={{ '&:hover': { backgroundColor: '#f8f9fa' } }}>
                         <TableCell sx={{ p: 0.5 }}>
                           <Typography variant="caption" sx={{ fontSize: '0.7rem' }}>

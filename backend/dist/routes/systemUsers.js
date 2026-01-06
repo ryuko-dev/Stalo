@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const database_1 = require("../config/database");
+const rbac_1 = require("../middleware/rbac");
 const router = (0, express_1.Router)();
 // Super admin email - cannot be modified or deleted
 const SUPER_ADMIN_EMAIL = 'sinan.mecit@arkgroupdmcc.com';
@@ -116,6 +117,8 @@ router.put('/:id', async (req, res) => {
                 console.error('⚠️ Failed to log audit entry:', auditError);
                 // Don't fail the request if audit logging fails
             }
+            // Clear role cache to ensure role changes take effect immediately
+            (0, rbac_1.clearRoleCache)(userEmail);
         }
         const updated = await pool.request().input('id', req.params.id).query('SELECT ID, Name, EmailAddress, StartDate, EndDate, Active, Role FROM dbo.SystemUsers WHERE ID = @id');
         res.json(updated.recordset[0]);

@@ -289,11 +289,14 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
       const existingRecord = recordsByResource.get(resourceId);
       
       if (resource && Object.keys(editedData).length > 0) {
-        const workingDays = calculateWorkingDays(
-          selectedDate.getFullYear(),
-          selectedDate.getMonth(),
-          resource.WorkDays
-        );
+        // Use edited or existing working days, otherwise calculate default
+        const workingDays = editedData.WorkingDays !== undefined 
+          ? editedData.WorkingDays 
+          : (existingRecord?.WorkingDays || calculateWorkingDays(
+              selectedDate.getFullYear(),
+              selectedDate.getMonth(),
+              resource.WorkDays
+            ));
         
         // Determine the project allocations JSON to save
         let projectAllocationsJson = editedData.ProjectAllocations || existingRecord?.ProjectAllocations || null;
@@ -747,11 +750,14 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
     const editedData = editedRecords.get(resource.ResourceID) || {};
     const existingRecord = recordsByResource.get(resource.ResourceID);
     
-    const workingDays = calculateWorkingDays(
-      selectedDate.getFullYear(),
-      selectedDate.getMonth(),
-      resource.WorkDays
-    );
+    // Use edited or existing working days, otherwise calculate default
+    const workingDays = editedData.WorkingDays !== undefined 
+      ? editedData.WorkingDays 
+      : (existingRecord?.WorkingDays || calculateWorkingDays(
+          selectedDate.getFullYear(),
+          selectedDate.getMonth(),
+          resource.WorkDays
+        ));
     
     // Determine the project allocations JSON to save
     let projectAllocationsJson = editedData.ProjectAllocations || existingRecord?.ProjectAllocations || null;
@@ -1323,7 +1329,7 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
                             step="1"
                             value={getFieldValue(resource.ResourceID, 'WorkingDays', workingDays)}
                             onChange={(e) => handleFieldChange(resource.ResourceID, 'WorkingDays', e.target.value ? e.target.value : null)}
-                            disabled={isLocked}
+                            disabled={isLocked || !pagePermissions.canEdit}
                             style={{
                               width: '100%',
                               border: 'none',
@@ -1341,7 +1347,7 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
                             type="text"
                             value={getFieldValue(resource.ResourceID, 'Currency', '') || resource.Currency || ''}
                             onChange={(e) => handleFieldChange(resource.ResourceID, 'Currency', e.target.value)}
-                            disabled={isLocked}
+                            disabled={isLocked || !pagePermissions.canEdit}
                             style={{
                               width: '100%',
                               border: 'none',
@@ -1360,7 +1366,7 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
                             step="0.01"
                             value={getFieldValue(resource.ResourceID, 'NetSalary', '') || ''}
                             onChange={(e) => handleFieldChange(resource.ResourceID, 'NetSalary', e.target.value ? parseFloat(e.target.value) : null)}
-                            disabled={isLocked}
+                            disabled={isLocked || !pagePermissions.canEdit}
                             style={{
                               width: '100%',
                               border: 'none',
@@ -1379,7 +1385,7 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
                             step="0.01"
                             value={getFieldValue(resource.ResourceID, 'SocialSecurity', '') || ''}
                             onChange={(e) => handleFieldChange(resource.ResourceID, 'SocialSecurity', e.target.value ? parseFloat(e.target.value) : null)}
-                            disabled={isLocked}
+                            disabled={isLocked || !pagePermissions.canEdit}
                             style={{
                               width: '100%',
                               border: 'none',
@@ -1398,7 +1404,7 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
                             step="0.01"
                             value={getFieldValue(resource.ResourceID, 'EmployeeTax', '') || ''}
                             onChange={(e) => handleFieldChange(resource.ResourceID, 'EmployeeTax', e.target.value ? parseFloat(e.target.value) : null)}
-                            disabled={isLocked}
+                            disabled={isLocked || !pagePermissions.canEdit}
                             style={{
                               width: '100%',
                               border: 'none',
@@ -1417,7 +1423,7 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
                             step="0.01"
                             value={getFieldValue(resource.ResourceID, 'EmployerTax', '') || ''}
                             onChange={(e) => handleFieldChange(resource.ResourceID, 'EmployerTax', e.target.value ? parseFloat(e.target.value) : null)}
-                            disabled={isLocked}
+                            disabled={isLocked || !pagePermissions.canEdit}
                             style={{
                               width: '100%',
                               border: 'none',
@@ -1436,7 +1442,7 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
                             step="0.01"
                             value={getFieldValue(resource.ResourceID, 'Housing', '') || ''}
                             onChange={(e) => handleFieldChange(resource.ResourceID, 'Housing', e.target.value ? parseFloat(e.target.value) : null)}
-                            disabled={isLocked}
+                            disabled={isLocked || !pagePermissions.canEdit}
                             style={{
                               width: '100%',
                               border: 'none',
@@ -1455,7 +1461,7 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
                             step="0.01"
                             value={getFieldValue(resource.ResourceID, 'CommunicationsOther', '') || ''}
                             onChange={(e) => handleFieldChange(resource.ResourceID, 'CommunicationsOther', e.target.value ? parseFloat(e.target.value) : null)}
-                            disabled={isLocked}
+                            disabled={isLocked || !pagePermissions.canEdit}
                             style={{
                               width: '100%',
                               border: 'none',
@@ -1473,7 +1479,7 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
                             type="number"
                             value={getFieldValue(resource.ResourceID, 'AnnualLeave', '') || ''}
                             onChange={(e) => handleFieldChange(resource.ResourceID, 'AnnualLeave', e.target.value ? parseInt(e.target.value) : null)}
-                            disabled={isLocked}
+                            disabled={isLocked || !pagePermissions.canEdit}
                             style={{
                               width: '100%',
                               border: 'none',
@@ -1491,7 +1497,7 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
                             type="number"
                             value={getFieldValue(resource.ResourceID, 'SickLeave', '') || ''}
                             onChange={(e) => handleFieldChange(resource.ResourceID, 'SickLeave', e.target.value ? parseInt(e.target.value) : null)}
-                            disabled={isLocked}
+                            disabled={isLocked || !pagePermissions.canEdit}
                             style={{
                               width: '100%',
                               border: 'none',
@@ -1509,7 +1515,7 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
                             type="number"
                             value={getFieldValue(resource.ResourceID, 'PublicHolidays', '') || ''}
                             onChange={(e) => handleFieldChange(resource.ResourceID, 'PublicHolidays', e.target.value ? parseInt(e.target.value) : null)}
-                            disabled={isLocked}
+                            disabled={isLocked || !pagePermissions.canEdit}
                             style={{
                               width: '100%',
                               border: 'none',
@@ -1542,7 +1548,7 @@ export default function PayrollAllocation({ selectedDate }: PayrollAllocationPro
                                   step="0.01"
                                   value={allocationValue}
                                   onChange={(e) => setProjectAllocation(resource.ResourceID, project.ID, parseFloat(e.target.value) || 0)}
-                                  disabled={isLocked || isPercentageMode}
+                                  disabled={isLocked || isPercentageMode || !pagePermissions.canEdit}
                                   placeholder="0"
                                   style={{
                                     width: isPercentageMode ? '70%' : '100%',

@@ -118,7 +118,7 @@ export default function Settings() {
   });
 
   const users = usersData ?? [];
-  const roleOptions = useMemo(() => ['Admin', 'BudgetManager', 'Viewer', 'Editor'], []);
+  const roleOptions = useMemo(() => ['Admin', 'BudgetManager', 'Viewer', 'Editor', 'SuperViewer'], []);
 
   // Filter users based on search and filters
   const filteredUsers = useMemo(() => {
@@ -301,18 +301,21 @@ export default function Settings() {
                   <Table size="small" sx={{ '& td, & th': { fontSize: '0.75rem', py: 0.5 } }}>
                     <TableHead>
                       <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
-                        <TableCell sx={{ fontWeight: 'bold', width: '25%' }}>Page / Feature</TableCell>
-                        <TableCell align="center" sx={{ fontWeight: 'bold', width: '18.75%' }}>
+                        <TableCell sx={{ fontWeight: 'bold', width: '20%' }}>Page / Feature</TableCell>
+                        <TableCell align="center" sx={{ fontWeight: 'bold', width: '16%' }}>
                           <Chip label="Admin" color="error" size="small" />
                         </TableCell>
-                        <TableCell align="center" sx={{ fontWeight: 'bold', width: '18.75%' }}>
+                        <TableCell align="center" sx={{ fontWeight: 'bold', width: '16%' }}>
                           <Chip label="BudgetManager" color="primary" size="small" />
                         </TableCell>
-                        <TableCell align="center" sx={{ fontWeight: 'bold', width: '18.75%' }}>
+                        <TableCell align="center" sx={{ fontWeight: 'bold', width: '16%' }}>
                           <Chip label="Viewer" color="default" size="small" />
                         </TableCell>
-                        <TableCell align="center" sx={{ fontWeight: 'bold', width: '18.75%' }}>
+                        <TableCell align="center" sx={{ fontWeight: 'bold', width: '16%' }}>
                           <Chip label="Editor" color="success" size="small" />
+                        </TableCell>
+                        <TableCell align="center" sx={{ fontWeight: 'bold', width: '16%' }}>
+                          <Chip label="SuperViewer" color="info" size="small" />
                         </TableCell>
                       </TableRow>
                     </TableHead>
@@ -323,6 +326,7 @@ export default function Settings() {
                         <TableCell align="center">👁️ View Only</TableCell>
                         <TableCell align="center">👁️ View Only + Click Links</TableCell>
                         <TableCell align="center">✅ Full Access</TableCell>
+                        <TableCell align="center">👁️ View + 📥 Export</TableCell>
                       </TableRow>
                       <TableRow sx={{ backgroundColor: '#fafafa' }}>
                         <TableCell><strong>Gantt Chart</strong></TableCell>
@@ -330,6 +334,7 @@ export default function Settings() {
                         <TableCell align="center">👁️ View Only</TableCell>
                         <TableCell align="center">👁️ View Only</TableCell>
                         <TableCell align="center">✅ Full Access</TableCell>
+                        <TableCell align="center">👁️ View + 📥 Export</TableCell>
                       </TableRow>
                       <TableRow>
                         <TableCell><strong>Glidepath</strong></TableCell>
@@ -337,6 +342,7 @@ export default function Settings() {
                         <TableCell align="center">✏️ Edit + Add + Delete</TableCell>
                         <TableCell align="center">❌ No Access</TableCell>
                         <TableCell align="center">✅ Full Access</TableCell>
+                        <TableCell align="center">👁️ View + 📥 Export</TableCell>
                       </TableRow>
                       <TableRow sx={{ backgroundColor: '#fafafa' }}>
                         <TableCell><strong>Projects</strong></TableCell>
@@ -344,6 +350,7 @@ export default function Settings() {
                         <TableCell align="center">👁️ View Only</TableCell>
                         <TableCell align="center">❌ No Access</TableCell>
                         <TableCell align="center">✅ Full Access</TableCell>
+                        <TableCell align="center">👁️ View + 📥 Export</TableCell>
                       </TableRow>
                       <TableRow>
                         <TableCell><strong>Positions</strong></TableCell>
@@ -351,6 +358,7 @@ export default function Settings() {
                         <TableCell align="center">👁️ View Only</TableCell>
                         <TableCell align="center">❌ No Access</TableCell>
                         <TableCell align="center">✅ Full Access</TableCell>
+                        <TableCell align="center">👁️ View + 📥 Export</TableCell>
                       </TableRow>
                       <TableRow sx={{ backgroundColor: '#fafafa' }}>
                         <TableCell><strong>Resources</strong></TableCell>
@@ -358,6 +366,7 @@ export default function Settings() {
                         <TableCell align="center">👁️ View Only</TableCell>
                         <TableCell align="center">❌ No Access</TableCell>
                         <TableCell align="center">✅ Full Access</TableCell>
+                        <TableCell align="center">👁️ View + 📥 Export</TableCell>
                       </TableRow>
                       <TableRow>
                         <TableCell><strong>Payroll Allocation</strong></TableCell>
@@ -365,6 +374,7 @@ export default function Settings() {
                         <TableCell align="center">👁️ View Only</TableCell>
                         <TableCell align="center">❌ No Access</TableCell>
                         <TableCell align="center">✅ Full Access</TableCell>
+                        <TableCell align="center">👁️ View + 📥 Export</TableCell>
                       </TableRow>
                       <TableRow sx={{ backgroundColor: '#fafafa' }}>
                         <TableCell><strong>Scheduled Records</strong></TableCell>
@@ -372,6 +382,7 @@ export default function Settings() {
                         <TableCell align="center">✏️ Edit + Delete</TableCell>
                         <TableCell align="center">❌ No Access</TableCell>
                         <TableCell align="center">✅ Full Access</TableCell>
+                        <TableCell align="center">👁️ View + 📥 Export</TableCell>
                       </TableRow>
                       <TableRow>
                         <TableCell><strong>Reports</strong></TableCell>
@@ -379,6 +390,7 @@ export default function Settings() {
                         <TableCell align="center">👁️ View + 📥 Export</TableCell>
                         <TableCell align="center">❌ No Access</TableCell>
                         <TableCell align="center">✅ Full Access</TableCell>
+                        <TableCell align="center">👁️ View + 📥 Export</TableCell>
                       </TableRow>
                       <TableRow sx={{ backgroundColor: '#fafafa' }}>
                         <TableCell><strong>Payments</strong></TableCell>
@@ -386,10 +398,12 @@ export default function Settings() {
                         <TableCell align="center">👁️ View Only</TableCell>
                         <TableCell align="center">❌ No Access</TableCell>
                         <TableCell align="center">👁️ View Only</TableCell>
+                        <TableCell align="center">👁️ View + 📥 Export</TableCell>
                       </TableRow>
                       <TableRow>
                         <TableCell><strong>Settings</strong></TableCell>
                         <TableCell align="center">✅ Full Access</TableCell>
+                        <TableCell align="center">❌ No Access</TableCell>
                         <TableCell align="center">❌ No Access</TableCell>
                         <TableCell align="center">❌ No Access</TableCell>
                         <TableCell align="center">❌ No Access</TableCell>

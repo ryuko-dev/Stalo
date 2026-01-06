@@ -47,9 +47,10 @@ import {
   Add as AddIcon,
   Delete as DeleteIcon,
 } from '@mui/icons-material';
-import { getPersonnelExpenses, getPrepayments, getPurchaseInvoices, getSalaryPayments, getVendors, createPaymentJournalLine, createPersonnelPaymentJournalLine, createPrepaymentJournalLine, getBankAccounts, getVendorCards, createSalaryPaymentJournalLines, type BankAccount, type VendorCard, type SalaryEmployee } from '../services/paymentService';
+import { getPersonnelExpenses, getPrepayments, getPurchaseInvoices, getSalaryPayments, getVendors, createPaymentJournalLine, createPersonnelPaymentJournalLine, createPrepaymentJournalLine, createReceivablesJournalLine, getBankAccounts, getVendorCards, createSalaryPaymentJournalLines, type BankAccount, type VendorCard, type SalaryEmployee } from '../services/paymentService';
 import { convertToUSD } from '../services/exchangeRateService';
 import type { PersonnelExpense, Prepayment, PurchaseInvoice, SalaryPayment } from '../types/payments';
+import { getPostedSalesInvoices } from '../services/staloService';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -93,6 +94,12 @@ export default function Payments() {
     mouseY: number;
     salary: SalaryPayment | null;
   } | null>(null);
+  
+  const [receivablesContextMenu, setReceivablesContextMenu] = useState<{
+    mouseX: number;
+    mouseY: number;
+    invoice: any | null;
+  } | null>(null);
 
   // Snackbar state for payment journal feedback
   const [snackbar, setSnackbar] = useState<{
@@ -107,7 +114,8 @@ export default function Payments() {
   const [paymentDialogInvoice, setPaymentDialogInvoice] = useState<PurchaseInvoice | null>(null);
   const [paymentDialogPersonnel, setPaymentDialogPersonnel] = useState<PersonnelExpense | null>(null);
   const [paymentDialogPrepayment, setPaymentDialogPrepayment] = useState<Prepayment | null>(null);
-  const [paymentDialogType, setPaymentDialogType] = useState<'invoice' | 'personnel' | 'prepayment'>('invoice');
+  const [paymentDialogReceivable, setPaymentDialogReceivable] = useState<any | null>(null);
+  const [paymentDialogType, setPaymentDialogType] = useState<'invoice' | 'personnel' | 'prepayment' | 'receivables'>('invoice');
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [selectedBankAccount, setSelectedBankAccount] = useState<string>('');
   const [paymentReference, setPaymentReference] = useState<string>('');
@@ -128,8 +136,10 @@ export default function Payments() {
   const [prepayments, setPrepayments] = useState<Prepayment[]>([]);
   const [purchaseInvoices, setPurchaseInvoices] = useState<PurchaseInvoice[]>([]);
   const [salaryPayments, setSalaryPayments] = useState<SalaryPayment[]>([]);
+  const [postedSalesInvoices, setPostedSalesInvoices] = useState<any[]>([]);
   const [vendorLookup, setVendorLookup] = useState<Map<string, string>>(new Map());
   const [usdAmounts, setUsdAmounts] = useState<{ [currency: string]: number }>({});
+  const [receivablesUsdAmounts, setReceivablesUsdAmounts] = useState<{ [currency: string]: number }>({});
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
@@ -158,11 +168,12 @@ export default function Payments() {
     setLoading(true);
     setError(null);
     try {
-      const [personnel, prepaid, purchase, salary, vendors] = await Promise.all([
+      const [personnel, prepaid, purchase, salary, salesInvoices, vendors] = await Promise.all([
         getPersonnelExpenses(false), // Always fetch all
         getPrepayments(true), // Always fetch all prepayments, filter on frontend
         getPurchaseInvoices(),
         getSalaryPayments(),
+        getPostedSalesInvoices({ $top: 500 }),
         getVendors(), // Fetch vendors for lookup
       ]);
       
@@ -188,6 +199,9 @@ export default function Payments() {
       // Filter salary payments to show only items where Status is not 'Complete'
       const filteredSalaryPayments = salary.filter(sal => sal.Status !== 'Complete');
       setSalaryPayments(filteredSalaryPayments);
+      
+      // Set posted sales invoices
+      setPostedSalesInvoices(salesInvoices.invoices || []);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch payment data');
       console.error('Error fetching payment data:', err);
@@ -424,6 +438,59 @@ export default function Payments() {
     }
   };
 
+  const handleReceivablesPayClick = async () => {
+    const invoice = receivablesContextMenu?.invoice;
+    if (!invoice) {
+      handleCloseReceivablesContextMenu();
+      return;
+    }
+
+    // Open payment dialog
+    setPaymentDialogType('receivables');
+    setPaymentDialogReceivable(invoice);
+    setPaymentDialogInvoice(null);
+    setPaymentDialogPersonnel(null);
+    setPaymentDialogPrepayment(null);
+    setSelectedBankAccount('');
+    setPaymentReference('');
+    setPaymentDialogOpen(true);
+    handleCloseReceivablesContextMenu();
+
+    // Load bank accounts if not already loaded
+    if (bankAccounts.length === 0) {
+      setLoadingBankAccounts(true);
+      try {
+        const accounts = await getBankAccounts();
+        setBankAccounts(accounts);
+      } catch (err) {
+        console.error('Error loading bank accounts:', err);
+        setSnackbar({
+          open: true,
+          message: 'Failed to load bank accounts',
+          severity: 'error'
+        });
+      } finally {
+        setLoadingBankAccounts(false);
+      }
+    }
+  };
+
+  const handleCloseReceivablesContextMenu = () => {
+    setReceivablesContextMenu(null);
+  };
+
+  const handleReceivablesShowCustomerClick = () => {
+    if (receivablesContextMenu?.invoice) {
+      const invoice = receivablesContextMenu.invoice;
+      const customerNo = invoice.Sell_to_Customer_No;
+      if (customerNo) {
+        const customerUrl = `https://businesscentral.dynamics.com/9f4e2976-b07e-4f8f-9c78-055f6c855a11/Production/?company=ARK%20Group%20Live&page=25&filter=%27Cust.%20Ledger%20Entry%27.%27Customer%20No.%27%20IS%20%27${customerNo}%27&dc=0`;
+        window.open(customerUrl, '_blank');
+      }
+    }
+    handleCloseReceivablesContextMenu();
+  };
+
   const handlePrepaymentShowVendorClick = () => {
     if (prepaymentContextMenu?.prepayment) {
       const prepayment = prepaymentContextMenu.prepayment;
@@ -589,6 +656,15 @@ export default function Payments() {
           selectedBank.Currency_Code
         );
         vendorName = paymentDialogPrepayment.Vendor_Name;
+      } else if (paymentDialogType === 'receivables' && paymentDialogReceivable) {
+        // Create payment journal line for Receivables (customer payment)
+        result = await createReceivablesJournalLine(
+          paymentDialogReceivable,
+          selectedBankAccount,
+          paymentReference,
+          selectedBank.Currency_Code
+        );
+        vendorName = paymentDialogReceivable.Sell_to_Customer_Name;
       } else {
         setSnackbar({
           open: true,
@@ -632,6 +708,7 @@ export default function Payments() {
       setPaymentDialogInvoice(null);
       setPaymentDialogPersonnel(null);
       setPaymentDialogPrepayment(null);
+      setPaymentDialogReceivable(null);
       setSelectedBankAccount('');
       setPaymentReference('');
     }
@@ -922,9 +999,29 @@ export default function Payments() {
     return summary;
   };
 
+  // Calculate receivables summary by currency
+  const getReceivablesSummaryData = () => {
+    const summary: { [customerName: string]: { [currency: string]: number } } = {};
+    
+    // Add open sales invoices grouped by customer
+    postedSalesInvoices
+      .filter(invoice => !invoice.Closed)
+      .forEach(invoice => {
+        const customerName = invoice.Sell_to_Customer_Name || 'Unknown Customer';
+        const currency = invoice.Currency_Code || 'N/A';
+        
+        if (!summary[customerName]) summary[customerName] = {};
+        if (!summary[customerName][currency]) summary[customerName][currency] = 0;
+        summary[customerName][currency] += invoice.Remaining_Amount || 0;
+      });
+
+    return summary;
+  };
+
   // Convert summary totals to USD
   useEffect(() => {
     const calculateUSDAmounts = async () => {
+      // Calculate payables USD amounts
       const summary = getSummaryData();
       const usdConversions: { [currency: string]: number } = {};
       
@@ -934,12 +1031,25 @@ export default function Payments() {
       }
       
       setUsdAmounts(usdConversions);
+      
+      // Calculate receivables USD amounts
+      const receivablesSummary = getReceivablesSummaryData();
+      const receivablesUsdConversions: { [customerName: string]: number } = {};
+      
+      for (const [customerName, currencies] of Object.entries(receivablesSummary)) {
+        receivablesUsdConversions[customerName] = 0;
+        for (const [currency, amount] of Object.entries(currencies)) {
+          receivablesUsdConversions[customerName] += await convertToUSD(amount, currency);
+        }
+      }
+      
+      setReceivablesUsdAmounts(receivablesUsdConversions);
     };
     
     if (!loading) {
       calculateUSDAmounts();
     }
-  }, [personnelExpenses, prepayments, purchaseInvoices, salaryPayments, loading]);
+  }, [personnelExpenses, prepayments, purchaseInvoices, salaryPayments, postedSalesInvoices, loading]);
 
   // Filter data based on search term
   const filteredPersonnelExpenses = personnelExpenses.filter(expense => {
@@ -1040,6 +1150,7 @@ export default function Payments() {
           <Tab label={`Prepayments (${filteredPrepayments.length})`} />
           <Tab label={`Purchase Invoices (${purchaseInvoices.length})`} />
           <Tab label={`Salary (${salaryPayments.length})`} />
+          <Tab label={`Receivables (${postedSalesInvoices.filter(invoice => !invoice.Closed).length})`} />
         </Tabs>
 
         {loading && (
@@ -1050,67 +1161,215 @@ export default function Payments() {
 
         {/* Summary Tab */}
         <TabPanel value={activeTab} index={0}>
-          <TableContainer>
+          <Typography variant="h6" sx={{ mb: 2, color: 'primary.main', fontWeight: 'bold' }}>
+            Payables Summary
+          </Typography>
+          <TableContainer component={Paper} sx={{ boxShadow: 2, mb: 4 }}>
             <Table size="small" sx={{ '& .MuiTableCell-root': { py: 0.5, fontSize: '0.75rem' } }}>
               <TableHead>
                 <TableRow sx={{ bgcolor: 'primary.main' }}>
-                  <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Currency</TableCell>
-                  <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>Personnel</TableCell>
-                  <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>Prepayments</TableCell>
-                  <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>Purchase Invoices</TableCell>
-                  <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>Salary</TableCell>
-                  <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>Total</TableCell>
-                  <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>USD Amount</TableCell>
+                  <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Category</TableCell>
+                  {(() => {
+                    const currencies = Object.keys(getSummaryData());
+                    return currencies.map(currency => (
+                      <TableCell key={currency} align="right" sx={{ color: 'white', fontWeight: 'bold' }}>
+                        {currency}
+                      </TableCell>
+                    ));
+                  })()}
+                  <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>Total USD</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {Object.entries(getSummaryData()).map(([currency, categories], index) => {
-                  const total = Object.values(categories).reduce((sum, val) => sum + val, 0);
+                {(() => {
+                  const summary = getSummaryData();
+                  const categories = ['Personnel', 'Prepayments', 'Purchase Invoices', 'Salary'];
+                  const currencies = Object.keys(summary);
+                  
+                  if (currencies.length === 0) {
+                    return (
+                      <TableRow>
+                        <TableCell colSpan={2} align="center">
+                          <Typography variant="body2" color="text.secondary">
+                            No pending payments
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  }
+                  
                   return (
-                    <TableRow 
-                      key={currency}
-                      sx={{ 
-                        bgcolor: index % 2 === 0 ? 'action.hover' : 'transparent',
-                        '&:hover': { bgcolor: 'action.selected' }
-                      }}
-                    >
-                      <TableCell sx={{ fontWeight: 'bold' }}>{currency}</TableCell>
-                      <TableCell align="right">{formatCurrency(categories['Personnel'] || 0, currency)}</TableCell>
-                      <TableCell align="right">{formatCurrency(categories['Prepayments'] || 0, currency)}</TableCell>
-                      <TableCell align="right">{formatCurrency(categories['Purchase Invoices'] || 0, currency)}</TableCell>
-                      <TableCell align="right">{formatCurrency(categories['Salary'] || 0, currency)}</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 'bold' }}>{formatCurrency(total, currency)}</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
-                        {usdAmounts[currency] ? formatCurrency(usdAmounts[currency], 'USD') : '-'}
-                      </TableCell>
-                    </TableRow>
+                    <>
+                      {categories.map((category, catIndex) => {
+                        // Calculate USD total for this category across all currencies
+                        let categoryUsdTotal = 0;
+                        currencies.forEach(currency => {
+                          const amount = summary[currency][category] || 0;
+                          if (amount > 0 && usdAmounts[currency]) {
+                            // Calculate what portion of this currency's USD amount belongs to this category
+                            const currencyTotal = Object.values(summary[currency]).reduce((sum, val) => sum + val, 0);
+                            const proportion = amount / currencyTotal;
+                            categoryUsdTotal += usdAmounts[currency] * proportion;
+                          }
+                        });
+                        
+                        return (
+                          <TableRow 
+                            key={category}
+                            sx={{ 
+                              bgcolor: catIndex % 2 === 0 ? 'action.hover' : 'transparent',
+                              '&:hover': { bgcolor: 'action.selected' }
+                            }}
+                          >
+                            <TableCell sx={{ fontWeight: 'bold' }}>{category}</TableCell>
+                            {currencies.map(currency => {
+                              const amount = summary[currency][category] || 0;
+                              return (
+                                <TableCell key={currency} align="right">
+                                  {formatCurrency(amount, currency)}
+                                </TableCell>
+                              );
+                            })}
+                            <TableCell align="right" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+                              {formatCurrency(categoryUsdTotal, 'USD')}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                      <TableRow sx={{ bgcolor: 'action.selected', borderTop: 2, borderColor: 'primary.main' }}>
+                        <TableCell sx={{ fontWeight: 'bold', fontSize: '0.85rem' }}>
+                          Total
+                        </TableCell>
+                        {currencies.map(currency => {
+                          const total = Object.values(summary[currency]).reduce((sum, val) => sum + val, 0);
+                          return (
+                            <TableCell key={currency} align="right" sx={{ fontWeight: 'bold', fontSize: '0.85rem' }}>
+                              {formatCurrency(total, currency)}
+                            </TableCell>
+                          );
+                        })}
+                        <TableCell align="right" sx={{ fontWeight: 'bold', fontSize: '0.85rem', color: 'primary.main' }}>
+                          {formatCurrency(
+                            Object.values(usdAmounts).reduce((sum, val) => sum + val, 0),
+                            'USD'
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    </>
                   );
-                })}
-                {Object.keys(getSummaryData()).length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={7} align="center">
-                      <Typography variant="body2" color="text.secondary">
-                        No pending payments
-                      </Typography>
-                    </TableCell>
-                  </TableRow>
-                )}
-                {Object.keys(getSummaryData()).length > 0 && (
-                  <TableRow sx={{ bgcolor: 'action.selected', borderTop: 2, borderColor: 'primary.main' }}>
-                    <TableCell colSpan={6} align="right" sx={{ fontWeight: 'bold', fontSize: '0.85rem' }}>
-                      Grand Total:
-                    </TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 'bold', fontSize: '0.85rem', color: 'primary.main' }}>
-                      {formatCurrency(
-                        Object.values(usdAmounts).reduce((sum, val) => sum + val, 0),
-                        'USD'
-                      )}
-                    </TableCell>
-                  </TableRow>
-                )}
+                })()}
               </TableBody>
             </Table>
           </TableContainer>
+
+          {/* Receivables Summary */}
+          <Box sx={{ mt: 4 }}>
+            <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: 'success.main' }}>
+              Receivables Summary by Customer
+            </Typography>
+            <TableContainer component={Paper} sx={{ boxShadow: 2 }}>
+              <Table size="small" sx={{ '& .MuiTableCell-root': { py: 0.5, fontSize: '0.75rem' } }}>
+                <TableHead>
+                  <TableRow sx={{ bgcolor: 'success.main' }}>
+                    <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Customer</TableCell>
+                    {(() => {
+                      const receivablesSummary = getReceivablesSummaryData();
+                      // Get all unique currencies across all customers
+                      const currenciesSet = new Set<string>();
+                      Object.values(receivablesSummary).forEach(customerData => {
+                        Object.keys(customerData).forEach(currency => currenciesSet.add(currency));
+                      });
+                      const currencies = Array.from(currenciesSet).sort();
+                      
+                      return currencies.map(currency => (
+                        <TableCell key={currency} align="right" sx={{ color: 'white', fontWeight: 'bold' }}>
+                          {currency}
+                        </TableCell>
+                      ));
+                    })()}
+                    <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>Total USD</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {(() => {
+                    const receivablesSummary = getReceivablesSummaryData();
+                    const customerNames = Object.keys(receivablesSummary).sort();
+                    
+                    if (customerNames.length === 0) {
+                      return (
+                        <TableRow>
+                          <TableCell colSpan={2} align="center">
+                            <Typography variant="body2" color="text.secondary">
+                              No open receivables
+                            </Typography>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    }
+                    
+                    // Get all unique currencies
+                    const currenciesSet = new Set<string>();
+                    Object.values(receivablesSummary).forEach(customerData => {
+                      Object.keys(customerData).forEach(currency => currenciesSet.add(currency));
+                    });
+                    const currencies = Array.from(currenciesSet).sort();
+                    
+                    return (
+                      <>
+                        {customerNames.map((customerName, index) => {
+                          const customerData = receivablesSummary[customerName];
+                          
+                          return (
+                            <TableRow 
+                              key={customerName}
+                              sx={{ 
+                                bgcolor: index % 2 === 0 ? 'action.hover' : 'transparent',
+                                '&:hover': { bgcolor: 'action.selected' }
+                              }}
+                            >
+                              <TableCell sx={{ fontWeight: 'bold' }}>{customerName}</TableCell>
+                              {currencies.map(currency => {
+                                const amount = customerData[currency] || 0;
+                                return (
+                                  <TableCell key={currency} align="right">
+                                    {amount > 0 ? formatCurrency(amount, currency) : '-'}
+                                  </TableCell>
+                                );
+                              })}
+                              <TableCell align="right" sx={{ fontWeight: 'bold', color: 'success.main' }}>
+                                {formatCurrency(receivablesUsdAmounts[customerName] || 0, 'USD')}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                        <TableRow sx={{ bgcolor: 'action.selected', borderTop: 2, borderColor: 'success.main' }}>
+                          <TableCell sx={{ fontWeight: 'bold', fontSize: '0.85rem' }}>
+                            Total
+                          </TableCell>
+                          {currencies.map(currency => {
+                            const total = customerNames.reduce((sum, customerName) => {
+                              return sum + (receivablesSummary[customerName][currency] || 0);
+                            }, 0);
+                            return (
+                              <TableCell key={currency} align="right" sx={{ fontWeight: 'bold', fontSize: '0.85rem' }}>
+                                {formatCurrency(total, currency)}
+                              </TableCell>
+                            );
+                          })}
+                          <TableCell align="right" sx={{ fontWeight: 'bold', fontSize: '0.85rem', color: 'success.main' }}>
+                            {formatCurrency(
+                              Object.values(receivablesUsdAmounts).reduce((sum, val) => sum + val, 0),
+                              'USD'
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      </>
+                    );
+                  })()}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Box>
         </TabPanel>
 
         {/* Personnel Tab */}
@@ -1367,6 +1626,77 @@ export default function Payments() {
             </Table>
           </TableContainer>
         </TabPanel>
+
+        {/* Receivables Tab */}
+        <TabPanel value={activeTab} index={5}>
+          <TableContainer>
+            <Table size="small" sx={{ '& .MuiTableCell-root': { py: 0.5, fontSize: '0.75rem' } }}>
+              <TableHead>
+                <TableRow sx={{ bgcolor: 'primary.main' }}>
+                  <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>No</TableCell>
+                  <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Customer No</TableCell>
+                  <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Customer Name</TableCell>
+                  <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Description</TableCell>
+                  <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Document Date</TableCell>
+                  <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Currency Code</TableCell>
+                  <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>Amount</TableCell>
+                  <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>Remaining Amount</TableCell>
+                  <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>Aging (Days)</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {postedSalesInvoices.filter(invoice => !invoice.Closed).length === 0 && !loading && (
+                  <TableRow>
+                    <TableCell colSpan={9} align="center">
+                      <Typography variant="body2" color="text.secondary">
+                        No open sales invoices found
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                )}
+                {postedSalesInvoices.filter(invoice => !invoice.Closed).map((invoice, index) => {
+                  const documentDate = invoice.Document_Date ? new Date(invoice.Document_Date) : null;
+                  const today = new Date();
+                  const agingDays = documentDate ? Math.floor((today.getTime() - documentDate.getTime()) / (1000 * 60 * 60 * 24)) : '-';
+                  
+                  return (
+                    <TableRow 
+                      key={invoice.No || index} 
+                      hover
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setReceivablesContextMenu(
+                          receivablesContextMenu === null
+                            ? { mouseX: e.clientX + 2, mouseY: e.clientY - 6, invoice }
+                            : null
+                        );
+                      }}
+                      sx={{ 
+                        bgcolor: index % 2 === 0 ? 'action.hover' : 'transparent',
+                        '&:hover': { bgcolor: 'action.selected' },
+                        cursor: 'context-menu'
+                      }}
+                    >
+                      <TableCell>{invoice.No || '-'}</TableCell>
+                      <TableCell>{invoice.Sell_to_Customer_No || '-'}</TableCell>
+                      <TableCell>{invoice.Sell_to_Customer_Name || '-'}</TableCell>
+                      <TableCell>{invoice.Description || '-'}</TableCell>
+                      <TableCell>{formatDate(invoice.Document_Date)}</TableCell>
+                      <TableCell>{invoice.Currency_Code || '-'}</TableCell>
+                      <TableCell align="right">
+                        {invoice.Amount ? formatCurrency(invoice.Amount, invoice.Currency_Code) : '-'}
+                      </TableCell>
+                      <TableCell align="right">
+                        {invoice.Remaining_Amount ? formatCurrency(invoice.Remaining_Amount, invoice.Currency_Code) : '-'}
+                      </TableCell>
+                      <TableCell align="right">{agingDays}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </TabPanel>
       </Paper>
 
       {/* Context Menu for Personnel */}
@@ -1428,6 +1758,31 @@ export default function Payments() {
             <FolderIcon fontSize="small" />
           </ListItemIcon>
           <ListItemText>Open Folder</ListItemText>
+        </MenuItem>
+      </Menu>
+
+      {/* Context Menu for Receivables */}
+      <Menu
+        open={receivablesContextMenu !== null}
+        onClose={handleCloseReceivablesContextMenu}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          receivablesContextMenu !== null
+            ? { top: receivablesContextMenu.mouseY, left: receivablesContextMenu.mouseX }
+            : undefined
+        }
+      >
+        <MenuItem onClick={handleReceivablesPayClick}>
+          <ListItemIcon>
+            <PaymentIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Record Payment</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={handleReceivablesShowCustomerClick}>
+          <ListItemIcon>
+            <VisibilityIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Show Customer</ListItemText>
         </MenuItem>
       </Menu>
 
@@ -1598,6 +1953,14 @@ export default function Payments() {
                 <strong>Prepayment No:</strong> {paymentDialogPrepayment.No}<br />
                 <strong>Reference:</strong> {paymentDialogPrepayment.Payment_Reference || '-'}<br />
                 <strong>Amount:</strong> {paymentDialogPrepayment.Currency} {paymentDialogPrepayment.Prepayment_Amount?.toLocaleString()}
+              </Typography>
+            )}
+            {paymentDialogType === 'receivables' && paymentDialogReceivable && (
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                <strong>Customer:</strong> {paymentDialogReceivable.Sell_to_Customer_Name}<br />
+                <strong>Invoice No:</strong> {paymentDialogReceivable.No}<br />
+                <strong>Document Date:</strong> {paymentDialogReceivable.Document_Date || '-'}<br />
+                <strong>Amount:</strong> {paymentDialogReceivable.Currency_Code} {paymentDialogReceivable.Remaining_Amount?.toLocaleString()}
               </Typography>
             )}
             

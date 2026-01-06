@@ -319,6 +319,7 @@ router.get('/allocations', async (req, res) => {
           r.Name as ResourceName,
           p.Name as ProjectName,
           pos.TaskID,
+          pos.Fringe_Task,
           a.MonthYear
         FROM dbo.Allocation a
         INNER JOIN dbo.Resources r ON a.ResourceID = r.ID

@@ -162,7 +162,7 @@ router.get('/:id', async (req, res) => {
 // Create new position
 router.post('/', async (req, res) => {
     try {
-        const { Project, TaskID, PositionName, MonthYear, AllocationMode, LoE, Allocated } = req.body;
+        const { Project, TaskID, Fringe_Task, PositionName, MonthYear, AllocationMode, LoE, Allocated } = req.body;
         const pool = await (0, database_1.getConnection)();
         // Get AllocationMode from Projects table if not provided
         let allocationMode = AllocationMode;
@@ -179,16 +179,17 @@ router.post('/', async (req, res) => {
             .request()
             .input('Project', database_1.sql.UniqueIdentifier, Project)
             .input('TaskID', database_1.sql.NVarChar(255), TaskID)
+            .input('Fringe_Task', database_1.sql.NVarChar(255), Fringe_Task || null)
             .input('PositionName', database_1.sql.NVarChar(255), PositionName)
             .input('MonthYear', database_1.sql.Date, MonthYear)
             .input('AllocationMode', database_1.sql.NVarChar(100), allocationMode)
             .input('LoE', database_1.sql.Decimal(10, 2), LoE)
             .input('Allocated', database_1.sql.NVarChar(3), Allocated || 'No')
             .query(`
-        INSERT INTO dbo.Positions (Project, TaskID, PositionName, MonthYear, AllocationMode, LoE, Allocated)
-        OUTPUT INSERTED.ID, INSERTED.Project, INSERTED.TaskID, INSERTED.PositionName, 
+        INSERT INTO dbo.Positions (Project, TaskID, Fringe_Task, PositionName, MonthYear, AllocationMode, LoE, Allocated)
+        OUTPUT INSERTED.ID, INSERTED.Project, INSERTED.TaskID, INSERTED.Fringe_Task, INSERTED.PositionName, 
                INSERTED.MonthYear, INSERTED.AllocationMode, INSERTED.LoE, INSERTED.Allocated
-        VALUES (@Project, @TaskID, @PositionName, @MonthYear, @AllocationMode, @LoE, @Allocated)
+        VALUES (@Project, @TaskID, @Fringe_Task, @PositionName, @MonthYear, @AllocationMode, @LoE, @Allocated)
       `);
         res.status(201).json(result.recordset[0]);
     }
@@ -200,7 +201,7 @@ router.post('/', async (req, res) => {
 // Update position
 router.put('/:id', async (req, res) => {
     try {
-        const { Project, TaskID, PositionName, MonthYear, AllocationMode, LoE, Allocated } = req.body;
+        const { Project, TaskID, Fringe_Task, PositionName, MonthYear, AllocationMode, LoE, Allocated } = req.body;
         const pool = await (0, database_1.getConnection)();
         // Get AllocationMode from Projects table if not provided
         let allocationMode = AllocationMode;
@@ -218,6 +219,7 @@ router.put('/:id', async (req, res) => {
             .input('id', req.params.id)
             .input('Project', database_1.sql.UniqueIdentifier, Project)
             .input('TaskID', database_1.sql.NVarChar(255), TaskID)
+            .input('Fringe_Task', database_1.sql.NVarChar(255), Fringe_Task)
             .input('PositionName', database_1.sql.NVarChar(255), PositionName)
             .input('MonthYear', database_1.sql.Date, MonthYear)
             .input('AllocationMode', database_1.sql.NVarChar(100), allocationMode)
@@ -227,6 +229,7 @@ router.put('/:id', async (req, res) => {
         UPDATE dbo.Positions
         SET Project = COALESCE(@Project, Project),
             TaskID = COALESCE(@TaskID, TaskID),
+            Fringe_Task = COALESCE(@Fringe_Task, Fringe_Task),
             PositionName = COALESCE(@PositionName, PositionName),
             MonthYear = COALESCE(@MonthYear, MonthYear),
             AllocationMode = COALESCE(@AllocationMode, AllocationMode),

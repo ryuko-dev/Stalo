@@ -29,6 +29,7 @@ interface PermissionsContextType {
   isBudgetManager: boolean;
   isViewer: boolean;
   isEditor: boolean;
+  isSuperViewer: boolean;
   canAccessSettings: () => boolean;
   getPagePermissions: (page: string) => PagePermissions;
   refreshPermissions: () => Promise<void>;
@@ -146,6 +147,7 @@ export const PermissionsProvider: React.FC<{ children: ReactNode }> = ({ childre
   const isBudgetManager = userRole === 'BudgetManager';
   const isViewer = userRole === 'Viewer';
   const isEditor = userRole === 'Editor';
+  const isSuperViewer = userRole === 'SuperViewer';
 
   const canAccessSettings = () => {
     return isAdmin;
@@ -229,6 +231,21 @@ export const PermissionsProvider: React.FC<{ children: ReactNode }> = ({ childre
       }
     }
 
+    // SuperViewer permissions - can view all pages but cannot edit anything
+    if (isSuperViewer) {
+      // Explicitly deny settings access for SuperViewer
+      if (page.toLowerCase() === 'settings') {
+        return noAccess;
+      }
+      
+      return {
+        canView: true,
+        canEdit: false,
+        canDelete: false,
+        canExport: true,
+      };
+    }
+
     // Viewer permissions
     if (isViewer) {
       if (page.toLowerCase() === 'home' || page.toLowerCase() === 'gantt') {
@@ -271,6 +288,7 @@ export const PermissionsProvider: React.FC<{ children: ReactNode }> = ({ childre
     isBudgetManager,
     isViewer,
     isEditor,
+    isSuperViewer,
     canAccessSettings,
     getPagePermissions,
     refreshPermissions: async () => {

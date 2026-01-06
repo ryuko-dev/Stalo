@@ -1,4 +1,4 @@
-export type RoleType = 'Admin' | 'BudgetManager' | 'Viewer' | 'Editor';
+export type RoleType = 'Admin' | 'BudgetManager' | 'Viewer' | 'Editor' | 'SuperViewer';
 
 export interface SystemUser {
   ID: string;

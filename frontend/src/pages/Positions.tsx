@@ -74,6 +74,7 @@ export default function Positions() {
   const [filterStatus, setFilterStatus] = useState<'all' | 'allocated' | 'unallocated'>('all');
   const [filterProject, setFilterProject] = useState<string>('all');
   const [editingPosition, setEditingPosition] = useState<Position | null>(null);
+  const [itemsToShow, setItemsToShow] = useState<number>(50);
   
   // Date range filter - defaults to selected month from App header (stored in localStorage)
   const getSelectedMonth = () => {
@@ -876,6 +877,19 @@ export default function Positions() {
                     </Select>
                   </FormControl>
                 </Box>
+                <Box sx={{ flex: '0 1 120px', minWidth: '120px' }}>
+                  <FormControl fullWidth size="small">
+                    <Select
+                      value={itemsToShow}
+                      onChange={(e) => setItemsToShow(Number(e.target.value))}
+                      displayEmpty
+                    >
+                      <MenuItem value={50}>50 items</MenuItem>
+                      <MenuItem value={100}>100 items</MenuItem>
+                      <MenuItem value={999999}>All items</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
                 <Box sx={{ flex: '0 1 150px', minWidth: '150px' }}>
                   <DatePicker
                     label="From Date"
@@ -938,7 +952,7 @@ export default function Positions() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredPositions.map((position) => (
+                    filteredPositions.slice(0, itemsToShow).map((position) => (
                       <TableRow key={position.ID} hover sx={{ '&:hover': { backgroundColor: '#f8f9fa' } }}>
                         <TableCell sx={{ p: 0.5 }}>
                           <Typography variant="caption" sx={{ fontSize: '0.7rem' }}>
@@ -986,6 +1000,7 @@ export default function Positions() {
                             <Select
                               value={allocationsByPositionId.get(position.ID)?.ResourceID || ""}
                               displayEmpty
+                              disabled={!pagePermissions.canEdit}
                               onChange={(e) => {
                                 const currentAllocation = allocationsByPositionId.get(position.ID);
                                 

@@ -231,6 +231,62 @@ export async function createPrepaymentJournalLine(
 }
 
 /**
+ * Posted Sales Invoice type (receivables)
+ */
+export interface PostedSalesInvoice {
+  No: string;
+  Sell_to_Customer_No: string;
+  Sell_to_Customer_Name: string;
+  Document_Date: string;
+  Currency_Code: string;
+  Amount: number;
+  Remaining_Amount: number;
+  Description?: string;
+  Closed?: boolean;
+}
+
+/**
+ * Create a customer payment journal line for receiving payment on a receivable
+ * Creates TWO lines: one for Customer (credit), one for Bank Account (debit)
+ */
+export async function createReceivablesJournalLine(
+  invoice: PostedSalesInvoice,
+  bankAccountNo: string,
+  paymentReference: string,
+  bankCurrencyCode: string
+): Promise<{
+  success: boolean;
+  message: string;
+  customerLineId?: string;
+  bankLineId?: string;
+  paymentUrl?: string;
+  error?: string;
+}> {
+  try {
+    const response = await api.post('/bc/customer-payment-journal-line', {
+      customerNo: invoice.Sell_to_Customer_No,
+      customerName: invoice.Sell_to_Customer_Name,
+      amount: invoice.Remaining_Amount || invoice.Amount,
+      documentNo: invoice.No,
+      description: invoice.Description || '',
+      invoiceNo: invoice.No, // Document No = Invoice No
+      currencyCode: invoice.Currency_Code || '',
+      bankAccountNo,
+      paymentReference,
+      bankCurrencyCode
+    });
+    return response.data;
+  } catch (error: any) {
+    console.error('Error creating customer payment journal line:', error);
+    return {
+      success: false,
+      message: error.response?.data?.error || 'Failed to create customer payment journal line',
+      error: error.response?.data?.details || error.message
+    };
+  }
+}
+
+/**
  * Vendor card type from BC API (Vendor_Card_Excel)
  */
 export interface VendorCard {
