@@ -508,32 +508,35 @@ export default function Report() {
     let currentRow = 0;
     
     // Title rows
-    excelRows.push([`${projectFilter} - Activity-Based Budget Monthly Breakdown`, ...Array(months.length).fill('')]);
-    mergeRanges.push({ s: { r: currentRow, c: 0 }, e: { r: currentRow, c: months.length + 1 } });
+    excelRows.push([`${projectFilter} - Activity-Based Budget Monthly Breakdown`, ...Array(months.length + 3).fill('')]);
+    mergeRanges.push({ s: { r: currentRow, c: 0 }, e: { r: currentRow, c: months.length + 3 } });
     rowStyles.push({ level: 'title', row: currentRow++ });
     
-    excelRows.push([`Report Period: ${format(parseISO(startDate), 'MMM dd, yyyy')} to ${format(parseISO(endDate), 'MMM dd, yyyy')}`, ...Array(months.length).fill('')]);
-    mergeRanges.push({ s: { r: currentRow, c: 0 }, e: { r: currentRow, c: months.length + 1 } });
+    excelRows.push([`Report Period: ${format(parseISO(startDate), 'MMM dd, yyyy')} to ${format(parseISO(endDate), 'MMM dd, yyyy')}`, ...Array(months.length + 3).fill('')]);
+    mergeRanges.push({ s: { r: currentRow, c: 0 }, e: { r: currentRow, c: months.length + 3 } });
     rowStyles.push({ level: 'title', row: currentRow++ });
     
-    excelRows.push(['', ...Array(months.length).fill('')]);
-    mergeRanges.push({ s: { r: currentRow, c: 0 }, e: { r: currentRow, c: months.length + 1 } });
+    excelRows.push(['', ...Array(months.length + 3).fill('')]);
+    mergeRanges.push({ s: { r: currentRow, c: 0 }, e: { r: currentRow, c: months.length + 3 } });
     currentRow++;
     
     // Header row
-    const headerRow = ['Description', ...months.map(m => format(m, 'MMM yy')), 'Total'];
+    const headerRow = ['Description', ...months.map(m => format(m, 'MMM yy')), 'Total', 'Budget', 'Variance'];
     excelRows.push(headerRow);
     rowStyles.push({ level: 'header', row: currentRow++ });
 
     // Data rows
     rows.forEach(row => {
       const total = row.monthlyAmounts.reduce((sum, amt) => sum + amt, 0);
+      const variance = row.budget - total;
       const levelStyle = row.level === 'Top' ? 'level1' : row.level === 'Middle' ? 'level2' : 'level3';
       
       excelRows.push([
         row.description,
         ...row.monthlyAmounts,
-        total
+        total,
+        row.budget,
+        variance
       ]);
       rowStyles.push({ level: levelStyle as any, row: currentRow++ });
     });
@@ -543,7 +546,9 @@ export default function Report() {
       rows.filter(row => row.level === 'Detail').reduce((sum, row) => sum + row.monthlyAmounts[monthIdx], 0)
     );
     const overallTotal = grandTotals.reduce((sum, amt) => sum + amt, 0);
-    excelRows.push(['GRAND TOTAL', ...grandTotals, overallTotal]);
+    const grandBudget = rows.filter(row => row.level === 'Detail').reduce((sum, row) => sum + row.budget, 0);
+    const grandVariance = grandBudget - overallTotal;
+    excelRows.push(['GRAND TOTAL', ...grandTotals, overallTotal, grandBudget, grandVariance]);
     rowStyles.push({ level: 'grandTotal', row: currentRow++ });
 
     // Create worksheet
@@ -561,7 +566,7 @@ export default function Report() {
     };
 
     // Apply styles to cells
-    const colCount = months.length + 2; // Description + months + Total
+    const colCount = months.length + 4; // Description + months + Total + Budget + Variance
     rowStyles.forEach(({ level, row }) => {
       const style = styleColors[level];
       
@@ -614,6 +619,8 @@ export default function Report() {
       { wch: 60 }, // Description
       ...Array(months.length).fill({ wch: 12 }), // Month columns
       { wch: 15 }, // Total
+      { wch: 15 }, // Budget
+      { wch: 15 }, // Variance
     ];
 
     ws['!rows'] = [];
@@ -675,6 +682,7 @@ export default function Report() {
       taskNo: string;
       description: string;
       monthlyAmounts: number[];
+      budget: number;
     }> = [];
 
     // Process grouped data to extract hierarchy
@@ -689,12 +697,17 @@ export default function Report() {
           .filter(entry => format(parseISO(entry.Posting_Date), 'yyyy-MM') === monthStr)
           .reduce((sum, entry) => sum + entry.Formula, 0);
       });
+      // Calculate budget for top level (sum of all detail budgets under this top level)
+      const topBudget = Object.values(middleData).reduce((sum, detailGroups) => {
+        return sum + Object.values(detailGroups).reduce((detailSum, data) => detailSum + (data.budget || 0), 0);
+      }, 0);
       
       rows.push({
         level: 'Top',
         taskNo: taskTop.split(' - ')[0],
         description: taskTop,
-        monthlyAmounts: topMonthlyAmounts
+        monthlyAmounts: topMonthlyAmounts,
+        budget: topBudget
       });
 
       // Add middle and detail levels
@@ -706,6 +719,8 @@ export default function Report() {
             .filter(entry => format(parseISO(entry.Posting_Date), 'yyyy-MM') === monthStr)
             .reduce((sum, entry) => sum + entry.Formula, 0);
         });
+        // Calculate budget for middle level (sum of all detail budgets under this middle level)
+        const middleBudget = Object.values(detailData).reduce((sum, data) => sum + (data.budget || 0), 0);
 
         // Only add middle level row if it's not '_NO_MIDDLE_LEVEL_'
         if (taskMiddle !== '_NO_MIDDLE_LEVEL_') {
@@ -713,7 +728,8 @@ export default function Report() {
             level: 'Middle',
             taskNo: taskMiddle.split(' - ')[0],
             description: taskMiddle,
-            monthlyAmounts: middleMonthlyAmounts
+            monthlyAmounts: middleMonthlyAmounts,
+            budget: middleBudget
           });
         }
 
@@ -730,7 +746,8 @@ export default function Report() {
             level: 'Detail',
             taskNo: data.jobTaskNo,
             description: taskDetail,
-            monthlyAmounts: detailMonthlyAmounts
+            monthlyAmounts: detailMonthlyAmounts,
+            budget: data.budget || 0
           });
         });
       });
@@ -1338,6 +1355,28 @@ export default function Report() {
                       >
                         Total
                       </TableCell>
+                      <TableCell 
+                        align="right"
+                        sx={{ 
+                          fontWeight: 'bold', 
+                          backgroundColor: '#0d47a1', 
+                          color: 'white',
+                          minWidth: 120
+                        }}
+                      >
+                        Budget
+                      </TableCell>
+                      <TableCell 
+                        align="right"
+                        sx={{ 
+                          fontWeight: 'bold', 
+                          backgroundColor: '#0d47a1', 
+                          color: 'white',
+                          minWidth: 120
+                        }}
+                      >
+                        Variance
+                      </TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -1385,6 +1424,27 @@ export default function Report() {
                           >
                             {total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </TableCell>
+                          <TableCell 
+                            align="right"
+                            sx={{ 
+                              fontWeight: row.level === 'Top' ? 'bold' : 'normal',
+                              backgroundColor: bgColor,
+                              fontSize: '0.75rem'
+                            }}
+                          >
+                            {row.budget !== 0 ? row.budget.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
+                          </TableCell>
+                          <TableCell 
+                            align="right"
+                            sx={{ 
+                              fontWeight: row.level === 'Top' ? 'bold' : 'normal',
+                              backgroundColor: bgColor,
+                              fontSize: '0.75rem',
+                              color: (row.budget - total) < 0 ? '#d32f2f' : 'inherit'
+                            }}
+                          >
+                            {row.budget !== 0 || total !== 0 ? (row.budget - total).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
+                          </TableCell>
                         </TableRow>
                       );
                     })}
@@ -1430,6 +1490,32 @@ export default function Report() {
                         }}
                       >
                         {rows.filter(row => row.level === 'Detail').reduce((sum, row) => sum + row.monthlyAmounts.reduce((s, amt) => s + amt, 0), 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </TableCell>
+                      <TableCell 
+                        align="right"
+                        sx={{ 
+                          fontWeight: 'bold',
+                          backgroundColor: '#0d47a1',
+                          color: 'white',
+                          fontSize: '0.75rem'
+                        }}
+                      >
+                        {rows.filter(row => row.level === 'Detail').reduce((sum, row) => sum + row.budget, 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </TableCell>
+                      <TableCell 
+                        align="right"
+                        sx={{ 
+                          fontWeight: 'bold',
+                          backgroundColor: '#0d47a1',
+                          color: 'white',
+                          fontSize: '0.75rem'
+                        }}
+                      >
+                        {(() => {
+                          const totalBudget = rows.filter(row => row.level === 'Detail').reduce((sum, row) => sum + row.budget, 0);
+                          const totalActual = rows.filter(row => row.level === 'Detail').reduce((sum, row) => sum + row.monthlyAmounts.reduce((s, amt) => s + amt, 0), 0);
+                          return (totalBudget - totalActual).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        })()}
                       </TableCell>
                     </TableRow>
                   </TableBody>
