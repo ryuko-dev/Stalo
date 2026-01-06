@@ -99,6 +99,40 @@ export async function createOrOpenBudgetVersionFolder(projectName: string, versi
 }
 
 /**
+ * Create or open client invoice folder in SharePoint
+ * Creates folder structure: Client Invoices/{InvoiceNo}
+ */
+export async function createOrOpenClientInvoiceFolder(invoiceNo: string): Promise<FolderResult> {
+  try {
+    // Get access token with SharePoint permissions
+    const token = await getAccessToken();
+    
+    if (!token) {
+      return { success: false, error: 'Not authenticated. Please login first.' };
+    }
+
+    if (!SHAREPOINT_SITE_ID || !SHAREPOINT_DRIVE_ID) {
+      return { 
+        success: false, 
+        error: 'SharePoint configuration missing. Please configure VITE_SHAREPOINT_SITE_ID and VITE_SHAREPOINT_DRIVE_ID in .env.local' 
+      };
+    }
+
+    // Folder structure: Client Invoices/{InvoiceNo}
+    const rootFolder = 'Client Invoices';
+    const folderPath = `${rootFolder}/${invoiceNo}`;
+
+    return await createOrOpenFolderInternal(token, folderPath, invoiceNo, rootFolder);
+  } catch (error: any) {
+    console.error('SharePoint client invoice folder error:', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to access SharePoint',
+    };
+  }
+}
+
+/**
  * Internal helper function to create or open a folder
  */
 async function createOrOpenFolderInternal(
@@ -259,5 +293,6 @@ export async function getSharePointInfo(siteName: string): Promise<any> {
 export default {
   createOrOpenFolder,
   createOrOpenBudgetVersionFolder,
+  createOrOpenClientInvoiceFolder,
   getSharePointInfo,
 };

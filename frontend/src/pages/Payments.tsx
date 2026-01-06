@@ -51,6 +51,7 @@ import { getPersonnelExpenses, getPrepayments, getPurchaseInvoices, getSalaryPay
 import { convertToUSD } from '../services/exchangeRateService';
 import type { PersonnelExpense, Prepayment, PurchaseInvoice, SalaryPayment } from '../types/payments';
 import { getPostedSalesInvoices } from '../services/staloService';
+import sharepointService from '../services/sharepointService';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -486,6 +487,44 @@ export default function Payments() {
       if (customerNo) {
         const customerUrl = `https://businesscentral.dynamics.com/9f4e2976-b07e-4f8f-9c78-055f6c855a11/Production/?company=ARK%20Group%20Live&page=25&filter=%27Cust.%20Ledger%20Entry%27.%27Customer%20No.%27%20IS%20%27${customerNo}%27&dc=0`;
         window.open(customerUrl, '_blank');
+      }
+    }
+    handleCloseReceivablesContextMenu();
+  };
+
+  const handleReceivablesOpenFolderClick = async () => {
+    if (receivablesContextMenu?.invoice) {
+      const invoice = receivablesContextMenu.invoice;
+      const invoiceNo = invoice.No;
+      
+      if (invoiceNo) {
+        try {
+          const result = await sharepointService.createOrOpenClientInvoiceFolder(invoiceNo);
+          
+          if (result.success && result.folderUrl) {
+            window.open(result.folderUrl, '_blank');
+            
+            if (result.created) {
+              setSnackbar({
+                open: true,
+                message: `Created folder for invoice ${invoiceNo}`,
+                severity: 'success'
+              });
+            }
+          } else {
+            setSnackbar({
+              open: true,
+              message: result.error || 'Failed to access SharePoint folder',
+              severity: 'error'
+            });
+          }
+        } catch (err: any) {
+          setSnackbar({
+            open: true,
+            message: 'Failed to open folder: ' + (err.message || 'Unknown error'),
+            severity: 'error'
+          });
+        }
       }
     }
     handleCloseReceivablesContextMenu();
@@ -1783,6 +1822,12 @@ export default function Payments() {
             <VisibilityIcon fontSize="small" />
           </ListItemIcon>
           <ListItemText>Show Customer</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={handleReceivablesOpenFolderClick}>
+          <ListItemIcon>
+            <FolderIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Open Folder</ListItemText>
         </MenuItem>
       </Menu>
 
