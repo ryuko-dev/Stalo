@@ -143,7 +143,7 @@ export const PermissionsProvider: React.FC<{ children: ReactNode }> = ({ childre
   
   const hasAccess = !!userRole;
   const isAdmin = userRole === 'Admin';
-  const isBudgetManager = userRole === 'Budget Manager';
+  const isBudgetManager = userRole === 'BudgetManager';
   const isViewer = userRole === 'Viewer';
   const isEditor = userRole === 'Editor';
 

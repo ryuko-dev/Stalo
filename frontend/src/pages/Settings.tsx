@@ -118,7 +118,7 @@ export default function Settings() {
   });
 
   const users = usersData ?? [];
-  const roleOptions = useMemo(() => ['Admin', 'Budget Manager', 'Viewer', 'Editor'], []);
+  const roleOptions = useMemo(() => ['Admin', 'BudgetManager', 'Viewer', 'Editor'], []);
 
   // Filter users based on search and filters
   const filteredUsers = useMemo(() => {
@@ -306,7 +306,7 @@ export default function Settings() {
                           <Chip label="Admin" color="error" size="small" />
                         </TableCell>
                         <TableCell align="center" sx={{ fontWeight: 'bold', width: '18.75%' }}>
-                          <Chip label="Budget Manager" color="primary" size="small" />
+                          <Chip label="BudgetManager" color="primary" size="small" />
                         </TableCell>
                         <TableCell align="center" sx={{ fontWeight: 'bold', width: '18.75%' }}>
                           <Chip label="Viewer" color="default" size="small" />

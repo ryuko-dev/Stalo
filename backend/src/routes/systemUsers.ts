@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { getConnection, sql } from '../config/database';
+import { clearRoleCache } from '../middleware/rbac';
 
 const router = Router();
 
@@ -123,6 +124,9 @@ router.put('/:id', async (req, res) => {
         console.error('⚠️ Failed to log audit entry:', auditError);
         // Don't fail the request if audit logging fails
       }
+      
+      // Clear role cache to ensure role changes take effect immediately
+      clearRoleCache(userEmail);
     }
 
     const updated = await pool.request().input('id', req.params.id).query('SELECT ID, Name, EmailAddress, StartDate, EndDate, Active, Role FROM dbo.SystemUsers WHERE ID = @id');
