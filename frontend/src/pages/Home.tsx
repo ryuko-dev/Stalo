@@ -59,16 +59,13 @@ export default function Home({ selectedDate }: HomeProps) {
   
   const months = Array.from({ length: getMonthsCount(quarterFilter) }, (_, i) => addMonths(selectedDate, i));
 
-  // Calculate dynamic month column width based on number of months
-  // Columns will fill the available space
+  // Calculate dynamic month column width as percentage to fill available space
+  // The available space is divided equally among all month columns
   const getMonthColumnWidth = (): string => {
     const monthCount = getMonthsCount(quarterFilter);
-    switch (monthCount) {
-      case 3: return '400px'; // 1Q: wider columns to fill space
-      case 6: return '200px'; // 2Q: medium columns to fill space
-      case 9: return '130px'; // 3Q: narrower columns
-      default: return '200px';
-    }
+    // Calculate percentage width: 100% divided by number of months
+    const widthPercent = (100 / monthCount).toFixed(2);
+    return `${widthPercent}%`;
   };
 
   // Display mode state: 'percentage' or 'days'
@@ -376,7 +373,6 @@ export default function Home({ selectedDate }: HomeProps) {
           } : {},
           p: 0.5,
           width: getMonthColumnWidth(),
-          minWidth: getMonthColumnWidth(),
           height: '16px',
           position: 'relative',
           overflow: 'hidden',
@@ -1090,23 +1086,23 @@ export default function Home({ selectedDate }: HomeProps) {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <Box sx={{ px: 0, py: 2 }}>
+      <Box sx={{ px: 0, py: 0.5 }}>
       {/* Filter Controls */}
       <Box sx={{ 
-        mb: 2, 
+        mb: 1, 
         display: 'flex', 
         justifyContent: 'space-between', 
         alignItems: 'center',
         backgroundColor: 'white',
-        p: 2,
+        p: 1,
         borderRadius: 1,
         boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
         border: '1px solid rgba(0, 0, 0, 0.12)'
       }}>
-        <Typography variant="h6" component="h2" sx={{ fontWeight: 600, color: '#1f2937' }}>
+        <Typography variant="h6" component="h2" sx={{ fontWeight: 600, color: '#1f2937', fontSize: '1rem' }}>
           Resource Allocation Table
         </Typography>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <FormControl size="small" sx={{ minWidth: 120 }}>
             <InputLabel id="quarter-filter-label">Quarter</InputLabel>
             <Select
@@ -1230,12 +1226,11 @@ export default function Home({ selectedDate }: HomeProps) {
         maxHeight: '80vh',
         overflow: 'auto'
       }}>
-        <Table size="small" sx={{ width: 'auto', minWidth: '100%', tableLayout: 'auto' }} stickyHeader>
+        <Table size="small" sx={{ width: '100%', tableLayout: 'fixed' }} stickyHeader>
           <TableHead sx={{ backgroundColor: '#f9fafb' }}>
             <TableRow>
               <TableCell sx={{ 
-                width: '200px', 
-                minWidth: '200px',
+                width: '200px',
                 fontWeight: 600,
                 color: '#374151',
                 border: '1px solid rgba(0, 0, 0, 0.12)',
@@ -1252,8 +1247,7 @@ export default function Home({ selectedDate }: HomeProps) {
                   key={idx} 
                   align="center" 
                   sx={{ 
-                    width: getMonthColumnWidth(), 
-                    minWidth: getMonthColumnWidth(),
+                    width: getMonthColumnWidth(),
                     cursor: 'pointer',
                     backgroundColor: '#f3f4f6',
                     fontWeight: 600,
@@ -1278,8 +1272,7 @@ export default function Home({ selectedDate }: HomeProps) {
             {/* Unallocated positions row */}
             <TableRow>
               <TableCell sx={{ 
-                width: '200px', 
-                minWidth: '200px',
+                width: '200px',
                 fontWeight: 600,
                 color: '#6b7280',
                 border: '1px solid rgba(0, 0, 0, 0.12)',
@@ -1294,8 +1287,7 @@ export default function Home({ selectedDate }: HomeProps) {
               {months.map((_, i) => (
                 <TableCell key={i} align="center" sx={{ 
                   p: 0.5, 
-                  width: getMonthColumnWidth(), 
-                  minWidth: getMonthColumnWidth(),
+                  width: getMonthColumnWidth(),
                   backgroundColor: '#f9fafb',
                   border: '1px solid rgba(0, 0, 0, 0.12)',
                   verticalAlign: 'top'
@@ -1337,7 +1329,7 @@ export default function Home({ selectedDate }: HomeProps) {
                 {departmentResources.map((resource) => (
                   <TableRow key={resource.ID} hover>
                     <TableCell component="th" scope="row" sx={{ 
-                      pl: 2, pr: 1, py: 0.25, width: '200px', minWidth: '200px', fontSize: '0.8rem',
+                      pl: 2, pr: 1, py: 0.25, width: '200px', fontSize: '0.8rem',
                       position: 'sticky',
                       left: 0,
                       zIndex: 1,
@@ -1856,7 +1848,7 @@ export default function Home({ selectedDate }: HomeProps) {
           <Table size="small" sx={{ '& .MuiTableCell-root': { py: 0, px: 0 }, '& .MuiTableRow-root': { height: 'auto' } }}>
             <TableHead sx={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#f8f9fa', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
               <TableRow>
-                <TableCell sx={{ width: '150px', minWidth: '150px', py: 1, px: 1, backgroundColor: '#f8f9fa', fontSize: '0.75rem', fontWeight: 600 }}>Resource</TableCell>
+                <TableCell sx={{ width: '150px', minWidth: '150px', py: 1, px: 1, backgroundColor: '#f8f9fa', fontSize: '0.75rem', fontWeight: 600, position: 'sticky', left: 0, zIndex: 11 }}>Resource</TableCell>
                     {(() => {
                       // Get unique projects for this month
                       const month = months[monthlyAllocationDialog.monthIndex];
@@ -1898,7 +1890,10 @@ export default function Home({ selectedDate }: HomeProps) {
                             fontSize: '0.7rem',
                             py: 0.5,
                             px: 1,
-                            color: '#495057'
+                            color: '#495057',
+                            position: 'sticky',
+                            left: 0,
+                            zIndex: 2
                           }}
                         >
                           {department}
@@ -1938,7 +1933,7 @@ export default function Home({ selectedDate }: HomeProps) {
                         
                         return (
                           <TableRow key={resource.ID} hover sx={{ '&:hover': { backgroundColor: '#f8f9fa' } }}>
-                            <TableCell component="th" scope="row" sx={{ pl: 2, py: 0.5, px: 1, fontSize: '0.75rem' }}>
+                            <TableCell component="th" scope="row" sx={{ pl: 2, py: 0.5, px: 1, fontSize: '0.75rem', position: 'sticky', left: 0, backgroundColor: 'white', zIndex: 1 }}>
                               {resource.Name}
                             </TableCell>
                             {monthProjects.map((project) => {

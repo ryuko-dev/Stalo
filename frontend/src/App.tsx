@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Box, AppBar, Toolbar, Container, Select, FormControl, InputLabel, MenuItem, Button, Chip, IconButton, Tooltip, Menu } from '@mui/material';
+import { Box, AppBar, Toolbar, Container, Select, FormControl, InputLabel, MenuItem, Button, Chip, IconButton, Tooltip, Menu, Typography } from '@mui/material';
 import { ExitToApp as ExitIcon, ArrowDropDown as ArrowDropDownIcon, Settings as SettingsIcon, Logout as LogoutIcon } from '@mui/icons-material';
-import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { getYear, getMonth } from 'date-fns';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -27,6 +27,7 @@ const queryClient = new QueryClient();
 function AppContent() {
   const { isAuthenticated, userDisplayName, logout } = useAuth();
   const { userRole, hasAccess, getPagePermissions, canAccessSettings, isSuperAdmin, viewingAsRole, setViewingAsRole } = usePermissions();
+  const location = useLocation();
 
   // Load saved date from localStorage or use current date
   const getSavedDate = () => {
@@ -95,14 +96,14 @@ function AppContent() {
             {/* Navigation menu - conditional based on permissions */}
             <Box sx={{ flexGrow: 1, display: 'flex', gap: 1, alignItems: 'center', ml: 2 }}>
               {getPagePermissions('home').canView && (
-                <Button component={Link} to="/" color="inherit" sx={{ textTransform: 'none' }}>Home</Button>
+                <Button component={Link} to="/" color="inherit" sx={{ textTransform: 'none', fontSize: '0.8rem', border: '1px solid rgba(255, 255, 255, 0.5)', '&:hover': { border: '1px solid white' }, minHeight: '40px', display: 'flex', alignItems: 'center', backgroundColor: location.pathname === '/' ? 'rgba(255, 255, 255, 0.2)' : 'transparent', boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)' }}>Home</Button>
               )}
               {/* Staff Allocation Dropdown */}
               {(getPagePermissions('projects').canView || getPagePermissions('positions').canView || getPagePermissions('resources').canView) && (
                 <>
                   <Button 
                     color="inherit" 
-                    sx={{ textTransform: 'none' }}
+                    sx={{ textTransform: 'none', fontSize: '0.8rem', whiteSpace: 'normal', lineHeight: 1.2, py: 0.5, border: '1px solid rgba(255, 255, 255, 0.5)', '&:hover': { border: '1px solid white' }, minHeight: '40px', display: 'flex', alignItems: 'center', backgroundColor: ['/projects', '/positions', '/resources'].includes(location.pathname) ? 'rgba(255, 255, 255, 0.2)' : 'transparent', boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)' }}
                     onClick={handleStaffAllocationClick}
                     endIcon={<ArrowDropDownIcon />}
                   >
@@ -140,31 +141,30 @@ function AppContent() {
                 </>
               )}
               {getPagePermissions('payroll').canView && (
-                <Button component={Link} to="/payroll-allocation" color="inherit" sx={{ textTransform: 'none' }}>Payroll Allocation</Button>
+                <Button component={Link} to="/payroll-allocation" color="inherit" sx={{ textTransform: 'none', fontSize: '0.8rem', whiteSpace: 'normal', lineHeight: 1.2, py: 0.5, border: '1px solid rgba(255, 255, 255, 0.5)', '&:hover': { border: '1px solid white' }, minHeight: '40px', display: 'flex', alignItems: 'center', backgroundColor: location.pathname === '/payroll-allocation' ? 'rgba(255, 255, 255, 0.2)' : 'transparent', boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)' }}>Payroll Allocation</Button>
               )}
               {getPagePermissions('scheduled-records').canView && (
-                <Button component={Link} to="/scheduled-records" color="inherit" sx={{ textTransform: 'none' }}>Scheduled Records</Button>
+                <Button component={Link} to="/scheduled-records" color="inherit" sx={{ textTransform: 'none', fontSize: '0.8rem', whiteSpace: 'normal', lineHeight: 1.2, py: 0.5, border: '1px solid rgba(255, 255, 255, 0.5)', '&:hover': { border: '1px solid white' }, minHeight: '40px', display: 'flex', alignItems: 'center', backgroundColor: location.pathname === '/scheduled-records' ? 'rgba(255, 255, 255, 0.2)' : 'transparent', boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)' }}>Scheduled Records</Button>
               )}
               {getPagePermissions('report').canView && (
-                <Button component={Link} to="/report" color="inherit" sx={{ textTransform: 'none' }}>Report</Button>
+                <Button component={Link} to="/report" color="inherit" sx={{ textTransform: 'none', fontSize: '0.8rem', border: '1px solid rgba(255, 255, 255, 0.5)', '&:hover': { border: '1px solid white' }, minHeight: '40px', display: 'flex', alignItems: 'center', backgroundColor: location.pathname === '/report' ? 'rgba(255, 255, 255, 0.2)' : 'transparent', boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)' }}>Report</Button>
               )}
               {getPagePermissions('glidepath').canView && (
-                <Button component={Link} to="/glidepath" color="inherit" sx={{ textTransform: 'none' }}>Glidepath</Button>
+                <Button component={Link} to="/glidepath" color="inherit" sx={{ textTransform: 'none', fontSize: '0.8rem', border: '1px solid rgba(255, 255, 255, 0.5)', '&:hover': { border: '1px solid white' }, minHeight: '40px', display: 'flex', alignItems: 'center', backgroundColor: location.pathname === '/glidepath' ? 'rgba(255, 255, 255, 0.2)' : 'transparent', boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)' }}>Glidepath</Button>
               )}
               {getPagePermissions('payments').canView && (
-                <Button component={Link} to="/payments" color="inherit" sx={{ textTransform: 'none' }}>Payments</Button>
+                <Button component={Link} to="/payments" color="inherit" sx={{ textTransform: 'none', fontSize: '0.8rem', border: '1px solid rgba(255, 255, 255, 0.5)', '&:hover': { border: '1px solid white' }, minHeight: '40px', display: 'flex', alignItems: 'center', backgroundColor: location.pathname === '/payments' ? 'rgba(255, 255, 255, 0.2)' : 'transparent', boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)' }}>Payments</Button>
               )}
             </Box>
 
             {/* User info and Month/Year Filter */}
-            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-              <FormControl sx={{ minWidth: 150 }} size="small">
-                <InputLabel sx={{ color: 'white' }}>Month</InputLabel>
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', ml: 8 }}>
+              <FormControl sx={{ minWidth: 90 }} size="small">
                 <Select
                   value={getMonth(selectedDate)}
-                  label="Month"
                   onChange={handleMonthChange}
-                  sx={{ color: 'white', '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255, 255, 255, 0.5)' }, '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'white' }, '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'white' }, '.MuiSvgIcon-root': { color: 'white' } }}
+                  displayEmpty
+                  sx={{ color: 'white', fontSize: '0.8rem', height: '40px', boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)', '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255, 255, 255, 0.5)' }, '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'white' }, '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'white' }, '.MuiSvgIcon-root': { color: 'white' } }}
                 >
                   {months.map((month, index) => (
                     <MenuItem key={index} value={index}>
@@ -174,13 +174,12 @@ function AppContent() {
                 </Select>
               </FormControl>
 
-              <FormControl sx={{ minWidth: 120 }} size="small">
-                <InputLabel sx={{ color: 'white' }}>Year</InputLabel>
+              <FormControl sx={{ minWidth: 75 }} size="small">
                 <Select
                   value={getYear(selectedDate)}
-                  label="Year"
                   onChange={handleYearChange}
-                  sx={{ color: 'white', '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255, 255, 255, 0.5)' }, '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'white' }, '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'white' }, '.MuiSvgIcon-root': { color: 'white' } }}
+                  displayEmpty
+                  sx={{ color: 'white', fontSize: '0.8rem', height: '40px', boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)', '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255, 255, 255, 0.5)' }, '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'white' }, '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'white' }, '.MuiSvgIcon-root': { color: 'white' } }}
                 >
                   {years.map((year) => (
                     <MenuItem key={year} value={year}>
@@ -206,34 +205,42 @@ function AppContent() {
                   </IconButton>
                 </Tooltip>
               )}
-              <Chip 
-                label={`${userDisplayName} (${userRole || 'No Role'})`} 
-                color={userRole === 'Admin' ? 'error' : viewingAsRole ? 'warning' : 'default'}
-                size="small"
-                sx={{ color: 'white', borderColor: 'white' }}
-                variant="outlined"
-              />
-              {canAccessSettings() && (
-                <Tooltip title="Settings">
+              <Box sx={{ 
+                display: 'flex', 
+                gap: 0.5, 
+                alignItems: 'center', 
+                border: '1px solid rgba(255, 255, 255, 0.5)', 
+                borderRadius: '4px', 
+                px: 1, 
+                minHeight: '40px',
+                height: '40px',
+                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
+              }}>
+                <Typography sx={{ color: 'white', fontSize: '0.7rem', whiteSpace: 'nowrap' }}>
+                  {userDisplayName} ({userRole || 'No Role'})
+                </Typography>
+                {canAccessSettings() && (
+                  <Tooltip title="Settings">
+                    <IconButton 
+                      component={Link} 
+                      to="/settings" 
+                      sx={{ color: 'white', padding: '4px' }}
+                      size="small"
+                    >
+                      <SettingsIcon sx={{ fontSize: '1rem' }} />
+                    </IconButton>
+                  </Tooltip>
+                )}
+                <Tooltip title="Logout">
                   <IconButton 
-                    component={Link} 
-                    to="/settings" 
-                    sx={{ color: 'white' }}
+                    onClick={logout} 
+                    sx={{ color: 'white', padding: '4px' }}
                     size="small"
                   >
-                    <SettingsIcon />
+                    <LogoutIcon sx={{ fontSize: '1rem' }} />
                   </IconButton>
                 </Tooltip>
-              )}
-              <Tooltip title="Logout">
-                <IconButton 
-                  onClick={logout} 
-                  sx={{ color: 'white' }}
-                  size="small"
-                >
-                  <LogoutIcon />
-                </IconButton>
-              </Tooltip>
+              </Box>
             </Box>
           </Toolbar>
         </AppBar>
