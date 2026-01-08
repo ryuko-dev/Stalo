@@ -141,13 +141,25 @@ export default function Payments() {
   const [vendorLookup, setVendorLookup] = useState<Map<string, string>>(new Map());
   const [usdAmounts, setUsdAmounts] = useState<{ [currency: string]: number }>({});
   const [receivablesUsdAmounts, setReceivablesUsdAmounts] = useState<{ [currency: string]: number }>({});
+  const [showAllReceivables, setShowAllReceivables] = useState(false);
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
   };
 
   // Sort purchase invoices by Posting_Date, newest at the end
-  const sortedPurchaseInvoices = [...purchaseInvoices].sort((a, b) => {
+  const sortedPurchaseInvoices = [...purchaseInvoices].filter(invoice => {
+    // Only filter by search term if on Purchase Invoices tab (activeTab === 3)
+    if (activeTab !== 3 || !searchTerm) return true;
+    const search = searchTerm.toLowerCase();
+    return (
+      (invoice.No || '').toLowerCase().includes(search) ||
+      (invoice.Buy_from_Vendor_No || '').toLowerCase().includes(search) ||
+      (invoice.Buy_from_Vendor_Name || '').toLowerCase().includes(search) ||
+      (invoice.External_Document_No || '').toLowerCase().includes(search) ||
+      (invoice.Project || '').toLowerCase().includes(search)
+    );
+  }).sort((a, b) => {
     const dateA = new Date(a.Posting_Date || '1900-01-01').getTime();
     const dateB = new Date(b.Posting_Date || '1900-01-01').getTime();
     return dateA - dateB;
@@ -165,6 +177,35 @@ export default function Payments() {
 
   const paymentMethodKeys = Object.keys(groupedPurchaseInvoices).sort();
 
+  // Filter salary payments by search term
+  const filteredSalaryPayments = salaryPayments.filter(salary => {
+    // Only filter by search term if on Salary tab (activeTab === 4)
+    if (activeTab !== 4 || !searchTerm) return true;
+    const search = searchTerm.toLowerCase();
+    return (
+      (salary.No || '').toLowerCase().includes(search) ||
+      (salary.Period || '').toLowerCase().includes(search) ||
+      (salary.Location || '').toLowerCase().includes(search) ||
+      (salary.Status || '').toLowerCase().includes(search)
+    );
+  });
+
+  // Filter receivables by search term
+  const filteredReceivables = postedSalesInvoices.filter(invoice => {
+    // Filter by closed status first
+    if (!showAllReceivables && invoice.Closed) return false;
+    
+    // Only filter by search term if on Receivables tab (activeTab === 5)
+    if (activeTab !== 5 || !searchTerm) return true;
+    const search = searchTerm.toLowerCase();
+    return (
+      (invoice.No || '').toLowerCase().includes(search) ||
+      (invoice.Sell_to_Customer_Name || '').toLowerCase().includes(search) ||
+      (invoice.Description || '').toLowerCase().includes(search) ||
+      (invoice.Currency_Code || '').toLowerCase().includes(search)
+    );
+  });
+
   const fetchData = async () => {
     setLoading(true);
     setError(null);
@@ -174,7 +215,7 @@ export default function Payments() {
         getPrepayments(true), // Always fetch all prepayments, filter on frontend
         getPurchaseInvoices(),
         getSalaryPayments(),
-        getPostedSalesInvoices({ $top: 500 }),
+        getPostedSalesInvoices({}), // Always fetch all sales invoices
         getVendors(), // Fetch vendors for lookup
       ]);
       
@@ -213,7 +254,7 @@ export default function Payments() {
 
   useEffect(() => {
     fetchData();
-  }, []); // No dependencies since we removed show all filters
+  }, []); // Only fetch once on mount
 
   const handleFolderClick = (folderUrl: string) => {
     if (folderUrl) {
@@ -1097,8 +1138,8 @@ export default function Payments() {
     const isNotDraft = expense.Status !== 'Draft';
     if (!hasBlankPaymentRef || !isNotDraft) return false;
     
-    // Only filter by search term, no payment reference filter
-    if (!searchTerm) return true;
+    // Only filter by search term if on Personnel tab (activeTab === 1)
+    if (activeTab !== 1 || !searchTerm) return true;
     const search = searchTerm.toLowerCase();
     return (
       (expense.Vendor || '').toLowerCase().includes(search) ||
@@ -1122,8 +1163,8 @@ export default function Payments() {
     const status = getPrepaymentStatus(prepayment);
     if (status.label !== 'Approved') return false;
     
-    // Filter by search term
-    if (!searchTerm) return true;
+    // Only filter by search term if on Prepayments tab (activeTab === 2)
+    if (activeTab !== 2 || !searchTerm) return true;
     const search = searchTerm.toLowerCase();
     return (
       (prepayment.Vendor || '').toLowerCase().includes(search) ||
@@ -1187,9 +1228,9 @@ export default function Payments() {
           <Tab label="Summary" />
           <Tab label={`Personnel (${filteredPersonnelExpenses.length})`} />
           <Tab label={`Prepayments (${filteredPrepayments.length})`} />
-          <Tab label={`Purchase Invoices (${purchaseInvoices.length})`} />
-          <Tab label={`Salary (${salaryPayments.length})`} />
-          <Tab label={`Receivables (${postedSalesInvoices.filter(invoice => !invoice.Closed).length})`} />
+          <Tab label={`Purchase Invoices (${sortedPurchaseInvoices.length})`} />
+          <Tab label={`Salary (${filteredSalaryPayments.length})`} />
+          <Tab label={`Receivables (${filteredReceivables.length})`} />
         </Tabs>
 
         {loading && (
@@ -1626,16 +1667,16 @@ export default function Payments() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {salaryPayments.length === 0 && !loading && (
+                {filteredSalaryPayments.length === 0 && !loading && (
                   <TableRow>
                     <TableCell colSpan={7} align="center">
                       <Typography variant="body2" color="text.secondary">
-                        No salary payments found
+                        {searchTerm ? 'No results found' : 'No salary payments found'}
                       </Typography>
                     </TableCell>
                   </TableRow>
                 )}
-                {salaryPayments.map((salary, index) => (
+                {filteredSalaryPayments.map((salary, index) => (
                   <TableRow 
                     key={index} 
                     hover
@@ -1668,35 +1709,46 @@ export default function Payments() {
 
         {/* Receivables Tab */}
         <TabPanel value={activeTab} index={5}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+              Receivables
+            </Typography>
+            <Button 
+              variant="outlined" 
+              onClick={() => setShowAllReceivables(!showAllReceivables)}
+              size="small"
+            >
+              {showAllReceivables ? 'Show Open Only' : 'Show All'}
+            </Button>
+          </Box>
           <TableContainer>
-            <Table size="small" sx={{ '& .MuiTableCell-root': { py: 0.5, fontSize: '0.75rem' } }}>
+            <Table size="small" sx={{ '& .MuiTableCell-root': { py: 0.5, fontSize: '0.75rem' }, tableLayout: 'fixed', width: '100%' }}>
               <TableHead>
                 <TableRow sx={{ bgcolor: 'primary.main' }}>
-                  <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>No</TableCell>
-                  <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Customer No</TableCell>
-                  <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Customer Name</TableCell>
-                  <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Description</TableCell>
-                  <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Document Date</TableCell>
-                  <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Currency Code</TableCell>
-                  <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>Amount</TableCell>
-                  <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>Remaining Amount</TableCell>
-                  <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>Aging (Days)</TableCell>
+                  <TableCell sx={{ color: 'white', fontWeight: 'bold', width: '10%' }}>No</TableCell>
+                  <TableCell sx={{ color: 'white', fontWeight: 'bold', width: '18%' }}>Customer Name</TableCell>
+                  <TableCell sx={{ color: 'white', fontWeight: 'bold', width: '22%' }}>Description</TableCell>
+                  <TableCell sx={{ color: 'white', fontWeight: 'bold', width: '10%' }}>Document Date</TableCell>
+                  <TableCell sx={{ color: 'white', fontWeight: 'bold', width: '8%' }}>Currency Code</TableCell>
+                  <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold', width: '12%' }}>Amount</TableCell>
+                  <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold', width: '12%' }}>Remaining Amount</TableCell>
+                  <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold', width: '8%' }}>Aging (Days)</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {postedSalesInvoices.filter(invoice => !invoice.Closed).length === 0 && !loading && (
+                {filteredReceivables.length === 0 && !loading && (
                   <TableRow>
-                    <TableCell colSpan={9} align="center">
+                    <TableCell colSpan={8} align="center">
                       <Typography variant="body2" color="text.secondary">
-                        No open sales invoices found
+                        {searchTerm ? 'No results found' : (showAllReceivables ? 'No sales invoices found' : 'No open sales invoices found')}
                       </Typography>
                     </TableCell>
                   </TableRow>
                 )}
-                {postedSalesInvoices.filter(invoice => !invoice.Closed).map((invoice, index) => {
+                {filteredReceivables.map((invoice, index) => {
                   const documentDate = invoice.Document_Date ? new Date(invoice.Document_Date) : null;
                   const today = new Date();
-                  const agingDays = documentDate ? Math.floor((today.getTime() - documentDate.getTime()) / (1000 * 60 * 60 * 24)) : '-';
+                  const agingDays = invoice.Closed ? 'Paid' : (documentDate ? Math.floor((today.getTime() - documentDate.getTime()) / (1000 * 60 * 60 * 24)) : '-');
                   
                   return (
                     <TableRow 
@@ -1711,13 +1763,12 @@ export default function Payments() {
                         );
                       }}
                       sx={{ 
-                        bgcolor: index % 2 === 0 ? 'action.hover' : 'transparent',
-                        '&:hover': { bgcolor: 'action.selected' },
+                        bgcolor: invoice.Closed ? '#e8f5e9' : (index % 2 === 0 ? 'action.hover' : 'transparent'),
+                        '&:hover': { bgcolor: invoice.Closed ? '#c8e6c9' : 'action.selected' },
                         cursor: 'context-menu'
                       }}
                     >
                       <TableCell>{invoice.No || '-'}</TableCell>
-                      <TableCell>{invoice.Sell_to_Customer_No || '-'}</TableCell>
                       <TableCell>{invoice.Sell_to_Customer_Name || '-'}</TableCell>
                       <TableCell>{invoice.Description || '-'}</TableCell>
                       <TableCell>{formatDate(invoice.Document_Date)}</TableCell>
