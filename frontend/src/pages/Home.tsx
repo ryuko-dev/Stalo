@@ -69,7 +69,7 @@ export default function Home({ selectedDate }: HomeProps) {
   };
 
   // Display mode state: 'percentage' or 'days'
-  const [displayMode, setDisplayMode] = useState<'percentage' | 'days'>('percentage');
+  const [displayMode, setDisplayMode] = useState<'percentage' | 'days'>('days');
 
   // Project filter state
   const [selectedProjectFilter, setSelectedProjectFilter] = useState<string>('all');
@@ -133,20 +133,20 @@ export default function Home({ selectedDate }: HomeProps) {
       // Days mode thresholds (17-24 days = optimal, 20 days = 100% equivalent)
       // <85% = <17 days, 85-120% = 17-24 days, >120% = >24 days
       if (displayValue >= 17 && displayValue <= 24) {
-        return '#a5d6a7'; // pale green (85-120%)
+        return '#6b9f8a'; // muted teal (85-120%)
       } else if (displayValue < 17) {
-        return '#fff59d'; // pale yellow (<85%)
+        return '#a39850'; // muted yellow (<85%)
       } else {
-        return '#ef9a9a'; // pale red (>120%)
+        return '#a85a52'; // muted red-brown (>120%)
       }
     } else {
       // Percentage mode thresholds (85-120% = optimal)
       if (displayValue >= 85 && displayValue <= 120) {
-        return '#a5d6a7'; // pale green
+        return '#6b9f8a'; // muted teal
       } else if (displayValue < 85) {
-        return '#fff59d'; // pale yellow
+        return '#a39850'; // muted yellow
       } else {
-        return '#ef9a9a'; // pale red
+        return '#a85a52'; // muted red-brown
       }
     }
   };
@@ -1227,18 +1227,18 @@ export default function Home({ selectedDate }: HomeProps) {
         overflow: 'auto'
       }}>
         <Table size="small" sx={{ width: '100%', tableLayout: 'fixed' }} stickyHeader>
-          <TableHead sx={{ backgroundColor: '#f9fafb' }}>
-            <TableRow>
+          <TableHead sx={{ backgroundColor: '#0078D7' }}>
+            <TableRow sx={{ backgroundColor: '#0078D7' }}>
               <TableCell sx={{ 
                 width: '200px',
                 fontWeight: 600,
-                color: '#374151',
+                color: 'white',
                 border: '1px solid rgba(0, 0, 0, 0.12)',
                 fontSize: '0.875rem',
                 position: 'sticky',
                 left: 0,
                 zIndex: 3,
-                backgroundColor: '#f3f4f6'
+                backgroundColor: '#0078D7'
               }}>
                 Name
               </TableCell>
@@ -1249,12 +1249,12 @@ export default function Home({ selectedDate }: HomeProps) {
                   sx={{ 
                     width: getMonthColumnWidth(),
                     cursor: 'pointer',
-                    backgroundColor: '#f3f4f6',
+                    backgroundColor: '#0078D7',
                     fontWeight: 600,
-                    color: '#374151',
+                    color: 'white',
                     border: '1px solid rgba(0, 0, 0, 0.12)',
                     fontSize: '0.875rem',
-                    '&:hover': { backgroundColor: '#e5e7eb' },
+                    '&:hover': { backgroundColor: '#005b9e' },
                     textDecoration: 'underline'
                   }}
                   onClick={() => handleMonthClick(idx)}
@@ -1274,13 +1274,13 @@ export default function Home({ selectedDate }: HomeProps) {
               <TableCell sx={{ 
                 width: '200px',
                 fontWeight: 600,
-                color: '#6b7280',
+                color: 'black',
                 border: '1px solid rgba(0, 0, 0, 0.12)',
                 fontSize: '0.75rem',
                 position: 'sticky',
                 left: 0,
                 zIndex: 1,
-                backgroundColor: '#f9fafb'
+                backgroundColor: 'grey.300'
               }}>
                 Unallocated
               </TableCell>
@@ -1288,7 +1288,7 @@ export default function Home({ selectedDate }: HomeProps) {
                 <TableCell key={i} align="center" sx={{ 
                   p: 0.5, 
                   width: getMonthColumnWidth(),
-                  backgroundColor: '#f9fafb',
+                  backgroundColor: 'grey.300',
                   border: '1px solid rgba(0, 0, 0, 0.12)',
                   verticalAlign: 'top'
                 }}>
@@ -1299,7 +1299,7 @@ export default function Home({ selectedDate }: HomeProps) {
                       ))}
                     </Box>
                   ) : (
-                    <Typography variant="body2" sx={{ color: '#9ca3af', fontSize: '0.75rem' }}>
+                    <Typography variant="body2" sx={{ color: '#6b7280', fontSize: '0.75rem' }}>
                       -
                     </Typography>
                   )}
@@ -1869,12 +1869,12 @@ export default function Home({ selectedDate }: HomeProps) {
                       )];
                       
                       return monthProjects.map((project, idx) => (
-                        <TableCell key={idx} align="center" sx={{ width: '100px', minWidth: '100px', py: 1, px: 0.5, backgroundColor: '#f8f9fa', fontSize: '0.75rem', fontWeight: 600 }}>
+                        <TableCell key={idx} align="center" sx={{ width: '80px', minWidth: '80px', py: 1, px: 0.5, backgroundColor: '#f8f9fa', fontSize: '0.65rem', fontWeight: 600, wordWrap: 'break-word', whiteSpace: 'normal', maxWidth: '80px' }}>
                           {project}
                         </TableCell>
                       ));
                     })()}
-                    <TableCell align="center" sx={{ width: '100px', minWidth: '100px', py: 1, px: 0.5, backgroundColor: '#f8f9fa', fontSize: '0.75rem', fontWeight: 600 }}>Total</TableCell>
+                    <TableCell align="center" sx={{ width: '80px', minWidth: '80px', py: 1, px: 0.5, backgroundColor: '#f8f9fa', fontSize: '0.65rem', fontWeight: 600, wordWrap: 'break-word', whiteSpace: 'normal', maxWidth: '80px' }}>Total</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -1986,8 +1986,8 @@ export default function Home({ selectedDate }: HomeProps) {
                                       backgroundColor: 'grey.300',
                                       '& .MuiLinearProgress-bar': {
                                         backgroundColor: displayMode === 'days' 
-                                          ? (percentageToDays(totalLoE) >= 17 && percentageToDays(totalLoE) <= 24 ? '#4caf50' : percentageToDays(totalLoE) > 24 ? '#f44336' : '#ffb300')
-                                          : (totalLoE >= 85 && totalLoE <= 120 ? '#4caf50' : totalLoE > 120 ? '#f44336' : '#ffb300'),
+                                          ? (percentageToDays(totalLoE) >= 17 && percentageToDays(totalLoE) <= 24 ? '#6b9f8a' : percentageToDays(totalLoE) > 24 ? '#a85a52' : '#a39850')
+                                          : (totalLoE >= 85 && totalLoE <= 120 ? '#6b9f8a' : totalLoE > 120 ? '#a85a52' : '#a39850'),
                                         borderRadius: 2,
                                       }
                                     }}

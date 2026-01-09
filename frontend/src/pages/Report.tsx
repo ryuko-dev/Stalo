@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useState, useEffect, Fragment } from 'react';
 import * as XLSX from 'xlsx-js-style';
 import { saveAs } from 'file-saver';
-import { format, eachMonthOfInterval, parseISO, startOfMonth } from 'date-fns';
+import { format, eachMonthOfInterval, parseISO, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import api from '../services/api';
 
 interface ProjectLedgerEntry {
@@ -74,8 +74,20 @@ export default function Report() {
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
-  const [startDate, setStartDate] = useState<string>(new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  
+  // Initialize dates to first and last day of previous month
+  const getDefaultDates = () => {
+    const today = new Date();
+    const previousMonth = subMonths(today, 1);
+    const startDate = format(startOfMonth(previousMonth), 'yyyy-MM-dd');
+    const endDate = format(endOfMonth(previousMonth), 'yyyy-MM-dd');
+    
+    return { startDate, endDate };
+  };
+  
+  const defaultDates = getDefaultDates();
+  const [startDate, setStartDate] = useState<string>(defaultDates.startDate);
+  const [endDate, setEndDate] = useState<string>(defaultDates.endDate);
   const [contextMenu, setContextMenu] = useState<{ mouseX: number; mouseY: number; documentNo: string } | null>(null);
   const [abbDialogOpen, setAbbDialogOpen] = useState(false);
 
