@@ -132,66 +132,53 @@ router.get('/ledger-entries', async (req: Request, res: Response) => {
 
     const entries = (response.data as any).value || [];
     
-    // Get unique document numbers to fetch document dates and external document numbers
-    const documentNos = [...new Set(entries.map((entry: any) => entry.Document_No))];
+    // Get unique entry numbers to fetch document dates and external document numbers
+    // from custom API: datasets/ark%252Ffinance%252Fv1.0/tables/jobLedgerEntries
+    const entryNos = [...new Set(entries.map((entry: any) => entry.Entry_No))];
     
-    // Fetch document dates from JobLedgerEntries in batches
-    const documentDateMap: { [key: string]: string } = {};
+    // Fetch document dates and external document numbers from custom API
+    const documentDateMap: { [key: number]: string } = {};
+    const externalDocumentMap: { [key: number]: string } = {};
     
-    // Fetch external document numbers from General_Ledger_Entries_Excel in batches
-    const externalDocumentMap: { [key: string]: string } = {};
-    
-    if (documentNos.length > 0) {
+    if (entryNos.length > 0) {
       try {
-        // Build filter for document numbers (OData has URL length limits, so batch if needed)
+        console.log(`🔍 Fetching data for ${entryNos.length} entry numbers from custom API. Sample Entry_Nos:`, entryNos.slice(0, 5));
+        // Build filter for entry numbers (OData has URL length limits, so batch if needed)
         const batchSize = 50;
-        for (let i = 0; i < documentNos.length; i += batchSize) {
-          const batch = documentNos.slice(i, i + batchSize);
-          const docFilter = batch.map(docNo => `Document_No eq '${docNo}'`).join(' or ');
+        for (let i = 0; i < entryNos.length; i += batchSize) {
+          const batch = entryNos.slice(i, i + batchSize);
+          // jlentries uses camelCase field names
+          const entryFilter = batch.map(entryNo => `entryNo eq ${entryNo}`).join(' or ');
           
-          const jobLedgerResponse = await bcClient.get('/JobLedgerEntries', {
+          console.log(`🔍 Batch ${Math.floor(i / batchSize) + 1}: Fetching ${batch.length} entries`);
+          const apiPath = '/jlentries';
+          console.log(`🌐 Making request to: ${BC_BASE_URL}${apiPath}`);
+          // Use jlentries endpoint - uses camelCase: entryNo, documentDate, externalDocumentNo
+          const jobLedgerResponse = await bcClient.get(apiPath, {
             params: {
-              $filter: docFilter,
-              $select: 'Document_No,Document_Date'
+              $filter: entryFilter,
+              $select: 'entryNo,documentDate,externalDocumentNo'
             }
           });
           
           const jobLedgerEntries = (jobLedgerResponse.data as any).value || [];
+          console.log(`✅ Received ${jobLedgerEntries.length} entries from jlentries API. Sample:`, jobLedgerEntries.slice(0, 2));
           jobLedgerEntries.forEach((entry: any) => {
-            if (!documentDateMap[entry.Document_No]) {
-              documentDateMap[entry.Document_No] = entry.Document_Date;
+            // jlentries returns camelCase: entryNo, documentDate, externalDocumentNo
+            if (!documentDateMap[entry.entryNo]) {
+              documentDateMap[entry.entryNo] = entry.documentDate;
+            }
+            if (!externalDocumentMap[entry.entryNo] && entry.externalDocumentNo) {
+              externalDocumentMap[entry.entryNo] = entry.externalDocumentNo;
             }
           });
         }
-      } catch (docError) {
-        console.error('Error fetching document dates from JobLedgerEntries:', docError);
-        // Continue without document dates if there's an error
-      }
-      
-      try {
-        // Fetch external document numbers from General_Ledger_Entries_Excel
-        const batchSize = 50;
-        for (let i = 0; i < documentNos.length; i += batchSize) {
-          const batch = documentNos.slice(i, i + batchSize);
-          const docFilter = batch.map(docNo => `Document_No eq '${docNo}'`).join(' or ');
-          
-          const generalLedgerResponse = await bcClient.get('/General_Ledger_Entries_Excel', {
-            params: {
-              $filter: docFilter,
-              $select: 'Document_No,External_Document_No'
-            }
-          });
-          
-          const generalLedgerEntries = (generalLedgerResponse.data as any).value || [];
-          generalLedgerEntries.forEach((entry: any) => {
-            if (!externalDocumentMap[entry.Document_No]) {
-              externalDocumentMap[entry.Document_No] = entry.External_Document_No;
-            }
-          });
-        }
-      } catch (extDocError) {
-        console.error('Error fetching external document numbers from General_Ledger_Entries_Excel:', extDocError);
-        // Continue without external document numbers if there's an error
+        console.log(`✅ Fetched document dates and external doc numbers for ${Object.keys(documentDateMap).length} entries from jlentries API`);
+        console.log(`📊 Sample mappings - documentDateMap:`, Object.entries(documentDateMap).slice(0, 3));
+        console.log(`📊 Sample mappings - externalDocumentMap:`, Object.entries(externalDocumentMap).slice(0, 3));
+      } catch (docError: any) {
+        console.error('Error fetching from jlentries API:', docError.response?.data || docError.message);
+        // Continue without document dates/external docs if there's an error
       }
     }
     
@@ -280,11 +267,13 @@ router.get('/ledger-entries', async (req: Request, res: Response) => {
     // Merge document dates, external document numbers, and job task descriptions into entries
     const enrichedEntries = entries.map((entry: any) => {
       const taskHierarchy = jobTaskHierarchy.find(h => h.Job_Task_No === entry.Donor_Project_Task_No);
+      const docDate = documentDateMap[entry.Entry_No];
+      const extDocNo = externalDocumentMap[entry.Entry_No];
       
       return {
         ...entry,
-        Document_Date: documentDateMap[entry.Document_No] || null,
-        External_Document_No: externalDocumentMap[entry.Document_No] || null,
+        Document_Date: docDate || null,
+        External_Document_No: extDocNo || null, // Now using Entry_No from custom API
         Job_Task_Description: taskHierarchy?.Description || '',
         Level1_Job_Task_No: taskHierarchy?.Level1_Job_Task_No || '',
         Level1_Description: taskHierarchy?.Level1_Description || '',
@@ -293,6 +282,16 @@ router.get('/ledger-entries', async (req: Request, res: Response) => {
         Has_Middle_Level: taskHierarchy?.Has_Middle_Level || false
       };
     });
+    
+    // Log sample enriched entry to debug mapping
+    if (enrichedEntries.length > 0) {
+      console.log(`📊 Sample enriched entry:`, {
+        Entry_No: enrichedEntries[0].Entry_No,
+        Document_Date: enrichedEntries[0].Document_Date,
+        External_Document_No: enrichedEntries[0].External_Document_No
+      });
+    }
+    console.log(`✅ Enriched ${enrichedEntries.length} entries with custom API data`);
     
     // Fetch budget data from BudgetData table for the project and date range
     // Use provided versionId, or fall back to baseline version (Is_Baseline = 1)
@@ -1260,6 +1259,79 @@ router.get('/posted-sales-invoices', async (req: Request, res: Response) => {
     console.error('Error fetching posted sales invoices from BC:', error.response?.data || error.message);
     res.status(error.response?.status || 500).json({ 
       error: 'Failed to fetch posted sales invoices',
+      details: error.response?.data || error.message 
+    });
+  }
+});
+
+/**
+ * GET /api/bc/jobledgerentries
+ * Fetch job ledger entries from custom API to see available fields
+ * Query params: $top, $filter, $select, etc.
+ */
+router.get('/jobledgerentries', async (req: Request, res: Response) => {
+  try {
+    const bcClient = await createBCClient();
+    
+    // Forward all query parameters
+    const params: any = { ...req.query };
+    
+    // Default to top 5 to see sample data
+    if (!params.$top) {
+      params.$top = 5;
+    }
+    
+    // Use standard custom API path format
+    const response = await bcClient.get('/api/ark/finance/v1.0/jobLedgerEntries', { params });
+
+    res.json({
+      entries: (response.data as any).value || [],
+      count: ((response.data as any).value || []).length,
+      '@odata.context': (response.data as any)['@odata.context'],
+      '@odata.nextLink': (response.data as any)['@odata.nextLink']
+    });
+  } catch (error: any) {
+    console.error('Error fetching job ledger entries from BC:', error.response?.data || error.message);
+    res.status(error.response?.status || 500).json({ 
+      error: 'Failed to fetch job ledger entries',
+      details: error.response?.data || error.message 
+    });
+  }
+});
+
+/**
+ * GET /api/bc/jlentries
+ * Test endpoint to check what fields are available from the jlentries API
+ */
+router.get('/jlentries', async (req: Request, res: Response) => {
+  try {
+    const bcClient = await createBCClient();
+    
+    const filter = req.query.$filter as string;
+    const top = req.query.$top ? parseInt(req.query.$top as string) : 1;
+    
+    const response = await bcClient.get('/jlentries', {
+      params: {
+        $top: top,
+        ...(filter && { $filter: filter })
+      }
+    });
+
+    const entries = (response.data as any).value || [];
+    
+    // If we have entries, show the field names
+    const fields = entries.length > 0 ? Object.keys(entries[0]).sort() : [];
+    
+    res.json({
+      entries: entries,
+      count: entries.length,
+      availableFields: fields,
+      '@odata.context': (response.data as any)['@odata.context']
+    });
+  } catch (error: any) {
+    console.error('Error fetching jlentries from BC:', error.response?.data || error.message);
+    res.status(error.response?.status || 500).json({ 
+      error: 'Failed to fetch jlentries',
       details: error.response?.data || error.message 
     });
   }
