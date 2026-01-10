@@ -117,60 +117,50 @@ router.get('/ledger-entries', async (req, res) => {
             }
         });
         const entries = response.data.value || [];
-        // Get unique document numbers to fetch document dates and external document numbers
-        const documentNos = [...new Set(entries.map((entry) => entry.Document_No))];
-        // Fetch document dates from JobLedgerEntries in batches
+        // Get unique entry numbers to fetch document dates and external document numbers
+        // from custom API: datasets/ark%252Ffinance%252Fv1.0/tables/jobLedgerEntries
+        const entryNos = [...new Set(entries.map((entry) => entry.Entry_No))];
+        // Fetch document dates and external document numbers from custom API
         const documentDateMap = {};
-        // Fetch external document numbers from General_Ledger_Entries_Excel in batches
         const externalDocumentMap = {};
-        if (documentNos.length > 0) {
+        if (entryNos.length > 0) {
             try {
-                // Build filter for document numbers (OData has URL length limits, so batch if needed)
+                console.log(`🔍 Fetching data for ${entryNos.length} entry numbers from custom API. Sample Entry_Nos:`, entryNos.slice(0, 5));
+                // Build filter for entry numbers (OData has URL length limits, so batch if needed)
                 const batchSize = 50;
-                for (let i = 0; i < documentNos.length; i += batchSize) {
-                    const batch = documentNos.slice(i, i + batchSize);
-                    const docFilter = batch.map(docNo => `Document_No eq '${docNo}'`).join(' or ');
-                    const jobLedgerResponse = await bcClient.get('/JobLedgerEntries', {
+                for (let i = 0; i < entryNos.length; i += batchSize) {
+                    const batch = entryNos.slice(i, i + batchSize);
+                    // jlentries uses camelCase field names
+                    const entryFilter = batch.map(entryNo => `entryNo eq ${entryNo}`).join(' or ');
+                    console.log(`🔍 Batch ${Math.floor(i / batchSize) + 1}: Fetching ${batch.length} entries`);
+                    const apiPath = '/jlentries';
+                    console.log(`🌐 Making request to: ${BC_BASE_URL}${apiPath}`);
+                    // Use jlentries endpoint - uses camelCase: entryNo, documentDate, externalDocumentNo
+                    const jobLedgerResponse = await bcClient.get(apiPath, {
                         params: {
-                            $filter: docFilter,
-                            $select: 'Document_No,Document_Date'
+                            $filter: entryFilter,
+                            $select: 'entryNo,documentDate,externalDocumentNo'
                         }
                     });
                     const jobLedgerEntries = jobLedgerResponse.data.value || [];
+                    console.log(`✅ Received ${jobLedgerEntries.length} entries from jlentries API. Sample:`, jobLedgerEntries.slice(0, 2));
                     jobLedgerEntries.forEach((entry) => {
-                        if (!documentDateMap[entry.Document_No]) {
-                            documentDateMap[entry.Document_No] = entry.Document_Date;
+                        // jlentries returns camelCase: entryNo, documentDate, externalDocumentNo
+                        if (!documentDateMap[entry.entryNo]) {
+                            documentDateMap[entry.entryNo] = entry.documentDate;
+                        }
+                        if (!externalDocumentMap[entry.entryNo] && entry.externalDocumentNo) {
+                            externalDocumentMap[entry.entryNo] = entry.externalDocumentNo;
                         }
                     });
                 }
+                console.log(`✅ Fetched document dates and external doc numbers for ${Object.keys(documentDateMap).length} entries from jlentries API`);
+                console.log(`📊 Sample mappings - documentDateMap:`, Object.entries(documentDateMap).slice(0, 3));
+                console.log(`📊 Sample mappings - externalDocumentMap:`, Object.entries(externalDocumentMap).slice(0, 3));
             }
             catch (docError) {
-                console.error('Error fetching document dates from JobLedgerEntries:', docError);
-                // Continue without document dates if there's an error
-            }
-            try {
-                // Fetch external document numbers from General_Ledger_Entries_Excel
-                const batchSize = 50;
-                for (let i = 0; i < documentNos.length; i += batchSize) {
-                    const batch = documentNos.slice(i, i + batchSize);
-                    const docFilter = batch.map(docNo => `Document_No eq '${docNo}'`).join(' or ');
-                    const generalLedgerResponse = await bcClient.get('/General_Ledger_Entries_Excel', {
-                        params: {
-                            $filter: docFilter,
-                            $select: 'Document_No,External_Document_No'
-                        }
-                    });
-                    const generalLedgerEntries = generalLedgerResponse.data.value || [];
-                    generalLedgerEntries.forEach((entry) => {
-                        if (!externalDocumentMap[entry.Document_No]) {
-                            externalDocumentMap[entry.Document_No] = entry.External_Document_No;
-                        }
-                    });
-                }
-            }
-            catch (extDocError) {
-                console.error('Error fetching external document numbers from General_Ledger_Entries_Excel:', extDocError);
-                // Continue without external document numbers if there's an error
+                console.error('Error fetching from jlentries API:', docError.response?.data || docError.message);
+                // Continue without document dates/external docs if there's an error
             }
         }
         // Fetch Job Task Lines for the project to get task descriptions and hierarchy
@@ -246,10 +236,12 @@ router.get('/ledger-entries', async (req, res) => {
         // Merge document dates, external document numbers, and job task descriptions into entries
         const enrichedEntries = entries.map((entry) => {
             const taskHierarchy = jobTaskHierarchy.find(h => h.Job_Task_No === entry.Donor_Project_Task_No);
+            const docDate = documentDateMap[entry.Entry_No];
+            const extDocNo = externalDocumentMap[entry.Entry_No];
             return {
                 ...entry,
-                Document_Date: documentDateMap[entry.Document_No] || null,
-                External_Document_No: externalDocumentMap[entry.Document_No] || null,
+                Document_Date: docDate || null,
+                External_Document_No: extDocNo || null, // Now using Entry_No from custom API
                 Job_Task_Description: taskHierarchy?.Description || '',
                 Level1_Job_Task_No: taskHierarchy?.Level1_Job_Task_No || '',
                 Level1_Description: taskHierarchy?.Level1_Description || '',
@@ -258,6 +250,15 @@ router.get('/ledger-entries', async (req, res) => {
                 Has_Middle_Level: taskHierarchy?.Has_Middle_Level || false
             };
         });
+        // Log sample enriched entry to debug mapping
+        if (enrichedEntries.length > 0) {
+            console.log(`📊 Sample enriched entry:`, {
+                Entry_No: enrichedEntries[0].Entry_No,
+                Document_Date: enrichedEntries[0].Document_Date,
+                External_Document_No: enrichedEntries[0].External_Document_No
+            });
+        }
+        console.log(`✅ Enriched ${enrichedEntries.length} entries with custom API data`);
         // Fetch budget data from BudgetData table for the project and date range
         // Use provided versionId, or fall back to baseline version (Is_Baseline = 1)
         const budgetMap = {};
@@ -725,6 +726,148 @@ router.post('/payment-journal-line', async (req, res) => {
     }
 });
 /**
+ * POST /api/bc/customer-payment-journal-line
+ * Create payment journal lines for receiving customer payment (receivables)
+ * Creates TWO lines: one for Customer (credit), one for Bank Account (debit)
+ * Body: { customerNo, customerName, amount, documentNo, description, invoiceNo, currencyCode, bankAccountNo, paymentReference, bankCurrencyCode }
+ */
+router.post('/customer-payment-journal-line', async (req, res) => {
+    try {
+        const { customerNo, customerName, amount, documentNo, description, invoiceNo, currencyCode, bankAccountNo, paymentReference, bankCurrencyCode } = req.body;
+        console.log('Customer payment journal line request received:', {
+            customerNo,
+            customerName,
+            amount,
+            documentNo,
+            description,
+            invoiceNo,
+            currencyCode,
+            bankAccountNo,
+            paymentReference,
+            bankCurrencyCode
+        });
+        if (!customerNo || !amount || !bankAccountNo) {
+            return res.status(400).json({ error: 'customerNo, amount, and bankAccountNo are required' });
+        }
+        // Use standard BC API v2.0 for journals
+        const token = await getAccessToken();
+        const bcApiUrl = `https://api.businesscentral.dynamics.com/v2.0/${BC_TENANT_ID}/Production/api/v2.0/companies`;
+        // First, get the company ID
+        let companyId;
+        try {
+            const companiesResponse = await axios_1.default.get(bcApiUrl, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const companies = companiesResponse.data.value || [];
+            const company = companies.find((c) => c.name === 'ARK Group Live' || c.displayName === 'ARK Group Live');
+            if (!company) {
+                return res.status(404).json({ error: 'Company not found' });
+            }
+            companyId = company.id;
+        }
+        catch (companyError) {
+            console.error('Error fetching companies:', companyError.response?.data || companyError.message);
+            return res.status(500).json({ error: 'Failed to fetch company', details: companyError.response?.data });
+        }
+        // Get or create CASHRECPT journal batch (Cash Receipt Journal)
+        const journalsUrl = `https://api.businesscentral.dynamics.com/v2.0/${BC_TENANT_ID}/Production/api/v2.0/companies(${companyId})/journals`;
+        let journalId;
+        try {
+            const journalsResponse = await axios_1.default.get(journalsUrl, {
+                headers: { 'Authorization': `Bearer ${token}` },
+                params: { $filter: "code eq 'CASHRECPT'" }
+            });
+            const journals = journalsResponse.data.value || [];
+            if (journals.length > 0) {
+                journalId = journals[0].id;
+            }
+            else {
+                // Create new journal if not found
+                const createJournalResponse = await axios_1.default.post(journalsUrl, {
+                    code: 'CASHRECPT',
+                    displayName: 'Cash Receipt Journal'
+                }, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                journalId = createJournalResponse.data.id;
+            }
+        }
+        catch (journalError) {
+            console.error('Error with journals:', journalError.response?.data || journalError.message);
+            return res.status(500).json({ error: 'Failed to access cash receipt journal', details: journalError.response?.data });
+        }
+        const journalLinesUrl = `https://api.businesscentral.dynamics.com/v2.0/${BC_TENANT_ID}/Production/api/v2.0/companies(${companyId})/journals(${journalId})/journalLines`;
+        const postingDate = new Date().toISOString().split('T')[0];
+        const absAmount = Math.abs(amount);
+        // LINE 1: Customer line (CREDIT - negative amount since we're receiving money)
+        // Document No = Invoice No, Description = Description from invoice, External Doc = Invoice No
+        // Note: Currency is determined by the customer/bank account setup in BC, not passed via API
+        const customerLine = {
+            accountType: 'Customer',
+            accountNumber: customerNo,
+            postingDate: postingDate,
+            documentNumber: invoiceNo || documentNo || '', // Document No = Invoice No
+            amount: -absAmount, // Negative = Credit (receiving money reduces customer balance)
+            description: description || `Receipt from ${customerName || customerNo}`,
+            externalDocumentNumber: invoiceNo || '' // Vendor Invoice Ref = Invoice No
+        };
+        console.log('Creating CUSTOMER journal line (CREDIT):', customerLine);
+        const customerResponse = await axios_1.default.post(journalLinesUrl, customerLine, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        console.log('✅ Customer line created:', customerResponse.data);
+        // LINE 2: Bank Account line (DEBIT - positive amount since we're receiving money)
+        // Note: Currency is determined by the bank account setup in BC, not passed via API
+        const bankLine = {
+            accountType: 'Bank Account',
+            accountNumber: bankAccountNo,
+            postingDate: postingDate,
+            documentNumber: invoiceNo || documentNo || '', // Same Document No.
+            amount: absAmount, // Positive = Debit (bank balance increases)
+            description: description || `Receipt from ${customerName || customerNo}`,
+            externalDocumentNumber: invoiceNo || '' // Same External Document No.
+        };
+        console.log('Creating BANK ACCOUNT journal line (DEBIT):', bankLine);
+        const bankResponse = await axios_1.default.post(journalLinesUrl, bankLine, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        console.log('✅ Bank Account line created:', bankResponse.data);
+        // Return the URL to open the Cash Receipt Journal page filtered to CASHRECPT batch
+        const paymentUrl = `https://businesscentral.dynamics.com/9f4e2976-b07e-4f8f-9c78-055f6c855a11/Production?company=ARK%20Group%20Live&page=39&filter=%27Gen.%20Journal%20Line%27.%27Journal%20Template%20Name%27%20IS%20%27GENERAL%27%20AND%20%27Gen.%20Journal%20Line%27.%27Journal%20Batch%20Name%27%20IS%20%27CASHRECPT%27&dc=0`;
+        res.json({
+            success: true,
+            message: 'Customer payment journal lines created successfully (Customer credit + Bank debit)',
+            customerLineId: customerResponse.data.id,
+            bankLineId: bankResponse.data.id,
+            paymentUrl
+        });
+    }
+    catch (error) {
+        console.error('Error creating customer payment journal line:', error.response?.data || error.message);
+        const bcError = error.response?.data?.error;
+        let errorMessage = 'Failed to create customer payment journal line';
+        if (bcError?.message) {
+            errorMessage = bcError.message;
+        }
+        else if (error.message) {
+            errorMessage = error.message;
+        }
+        res.status(error.response?.status || 500).json({
+            error: errorMessage,
+            details: error.response?.data || error.message
+        });
+    }
+});
+/**
  * GET /api/bc/vendor-cards
  * Fetch full vendor list from Vendor_Card_Excel for employee selection in salary payments
  */
@@ -986,6 +1129,70 @@ router.get('/posted-sales-invoices', async (req, res) => {
         console.error('Error fetching posted sales invoices from BC:', error.response?.data || error.message);
         res.status(error.response?.status || 500).json({
             error: 'Failed to fetch posted sales invoices',
+            details: error.response?.data || error.message
+        });
+    }
+});
+/**
+ * GET /api/bc/jobledgerentries
+ * Fetch job ledger entries from custom API to see available fields
+ * Query params: $top, $filter, $select, etc.
+ */
+router.get('/jobledgerentries', async (req, res) => {
+    try {
+        const bcClient = await createBCClient();
+        // Forward all query parameters
+        const params = { ...req.query };
+        // Default to top 5 to see sample data
+        if (!params.$top) {
+            params.$top = 5;
+        }
+        // Use standard custom API path format
+        const response = await bcClient.get('/api/ark/finance/v1.0/jobLedgerEntries', { params });
+        res.json({
+            entries: response.data.value || [],
+            count: (response.data.value || []).length,
+            '@odata.context': response.data['@odata.context'],
+            '@odata.nextLink': response.data['@odata.nextLink']
+        });
+    }
+    catch (error) {
+        console.error('Error fetching job ledger entries from BC:', error.response?.data || error.message);
+        res.status(error.response?.status || 500).json({
+            error: 'Failed to fetch job ledger entries',
+            details: error.response?.data || error.message
+        });
+    }
+});
+/**
+ * GET /api/bc/jlentries
+ * Test endpoint to check what fields are available from the jlentries API
+ */
+router.get('/jlentries', async (req, res) => {
+    try {
+        const bcClient = await createBCClient();
+        const filter = req.query.$filter;
+        const top = req.query.$top ? parseInt(req.query.$top) : 1;
+        const response = await bcClient.get('/jlentries', {
+            params: {
+                $top: top,
+                ...(filter && { $filter: filter })
+            }
+        });
+        const entries = response.data.value || [];
+        // If we have entries, show the field names
+        const fields = entries.length > 0 ? Object.keys(entries[0]).sort() : [];
+        res.json({
+            entries: entries,
+            count: entries.length,
+            availableFields: fields,
+            '@odata.context': response.data['@odata.context']
+        });
+    }
+    catch (error) {
+        console.error('Error fetching jlentries from BC:', error.response?.data || error.message);
+        res.status(error.response?.status || 500).json({
+            error: 'Failed to fetch jlentries',
             details: error.response?.data || error.message
         });
     }

@@ -605,7 +605,7 @@ export default function Glidepath() {
   return (
     <Box sx={{ p: 2 }}>
       <Typography variant="h5" gutterBottom sx={{ mb: 2 }}>
-        Glidepath - Project Budget Planning
+        Project Budget
       </Typography>
 
       {/* Project Selection and Version Control Header */}

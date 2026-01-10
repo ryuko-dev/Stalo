@@ -111,6 +111,44 @@ app.get('/api/health', (req, res) => {
 // ============================================================================
 // Environment debug endpoint - only in development
 if (process.env.NODE_ENV !== 'production') {
+    // Test BC jlentries endpoint - no auth required in dev
+    app.get('/api/test-jlentries', async (req, res) => {
+        try {
+            const axios = require('axios');
+            const BC_BASE_URL = process.env.BC_BASE_URL ||
+                'https://api.businesscentral.dynamics.com/v2.0/9f4e2976-b07e-4f8f-9c78-055f6c855a11/Production/ODataV4/Company(\'ARK%20Group%20Live\')';
+            const BC_CLIENT_ID = process.env.BC_CLIENT_ID || '';
+            const BC_CLIENT_SECRET = process.env.BC_CLIENT_SECRET || '';
+            const BC_TENANT_ID = process.env.BC_TENANT_ID || '9f4e2976-b07e-4f8f-9c78-055f6c855a11';
+            // Get token
+            const tokenUrl = `https://login.microsoftonline.com/${BC_TENANT_ID}/oauth2/v2.0/token`;
+            const params = new URLSearchParams({
+                client_id: BC_CLIENT_ID,
+                client_secret: BC_CLIENT_SECRET,
+                scope: 'https://api.businesscentral.dynamics.com/.default',
+                grant_type: 'client_credentials',
+            });
+            const tokenResponse = await axios.post(tokenUrl, params.toString(), {
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            });
+            const accessToken = tokenResponse.data.access_token;
+            // Query jlentries
+            const entryNo = req.query.entryNo || '24577';
+            const bcResponse = await axios.get(`${BC_BASE_URL}/jlentries`, {
+                headers: { Authorization: `Bearer ${accessToken}` },
+                params: { $filter: `entryNo eq ${entryNo}` } // camelCase field name
+            });
+            res.json({
+                entry: bcResponse.data.value?.[0] || null,
+                count: bcResponse.data.value?.length || 0,
+                fields: bcResponse.data.value?.[0] ? Object.keys(bcResponse.data.value[0]) : []
+            });
+        }
+        catch (error) {
+            console.error('Test jlentries error:', error.response?.data || error.message);
+            res.status(500).json({ error: error.response?.data || error.message });
+        }
+    });
     app.get('/api/env-check', (req, res) => {
         res.json({
             DB_SERVER: process.env.DB_SERVER ? '✓ Set' : '✗ Missing',

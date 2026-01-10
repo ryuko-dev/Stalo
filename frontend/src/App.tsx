@@ -56,6 +56,18 @@ function AppContent() {
     setStaffAllocationAnchorEl(null);
   };
 
+  // State for Financial Reports dropdown
+  const [financialReportsAnchorEl, setFinancialReportsAnchorEl] = useState<null | HTMLElement>(null);
+  const isFinancialReportsOpen = Boolean(financialReportsAnchorEl);
+
+  const handleFinancialReportsClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    setFinancialReportsAnchorEl(event.currentTarget);
+  };
+
+  const handleFinancialReportsClose = () => {
+    setFinancialReportsAnchorEl(null);
+  };
+
   // Save date to localStorage whenever it changes
   const updateSelectedDate = (newDate: Date) => {
     setSelectedDate(newDate);
@@ -146,12 +158,42 @@ function AppContent() {
               {getPagePermissions('scheduled-records').canView && (
                 <Button component={Link} to="/scheduled-records" color="inherit" sx={{ textTransform: 'none', fontSize: '0.8rem', whiteSpace: 'normal', lineHeight: 1.2, py: 0.5, border: '1px solid rgba(255, 255, 255, 0.5)', '&:hover': { border: '1px solid white' }, minHeight: '40px', display: 'flex', alignItems: 'center', backgroundColor: location.pathname === '/scheduled-records' ? 'rgba(255, 255, 255, 0.2)' : 'transparent', boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)' }}>Scheduled Records</Button>
               )}
-              {getPagePermissions('report').canView && (
-                <Button component={Link} to="/report" color="inherit" sx={{ textTransform: 'none', fontSize: '0.8rem', border: '1px solid rgba(255, 255, 255, 0.5)', '&:hover': { border: '1px solid white' }, minHeight: '40px', display: 'flex', alignItems: 'center', backgroundColor: location.pathname === '/report' ? 'rgba(255, 255, 255, 0.2)' : 'transparent', boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)' }}>Report</Button>
-              )}
-              {getPagePermissions('glidepath').canView && (
-                <Button component={Link} to="/glidepath" color="inherit" sx={{ textTransform: 'none', fontSize: '0.8rem', border: '1px solid rgba(255, 255, 255, 0.5)', '&:hover': { border: '1px solid white' }, minHeight: '40px', display: 'flex', alignItems: 'center', backgroundColor: location.pathname === '/glidepath' ? 'rgba(255, 255, 255, 0.2)' : 'transparent', boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)' }}>Glidepath</Button>
-              )}
+              {getPagePermissions('report').canView || getPagePermissions('glidepath').canView ? (
+                <>
+                  <Button 
+                    color="inherit" 
+                    sx={{ textTransform: 'none', fontSize: '0.8rem', whiteSpace: 'normal', lineHeight: 1.2, py: 0.5, border: '1px solid rgba(255, 255, 255, 0.5)', '&:hover': { border: '1px solid white' }, minHeight: '40px', display: 'flex', alignItems: 'center', backgroundColor: ['/report', '/glidepath'].includes(location.pathname) ? 'rgba(255, 255, 255, 0.2)' : 'transparent', boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)' }}
+                    onClick={handleFinancialReportsClick}
+                    endIcon={<ArrowDropDownIcon />}
+                  >
+                    Financial Reports
+                  </Button>
+                  <Menu
+                    anchorEl={financialReportsAnchorEl}
+                    open={isFinancialReportsOpen}
+                    onClose={handleFinancialReportsClose}
+                    anchorOrigin={{
+                      vertical: 'bottom',
+                      horizontal: 'left',
+                    }}
+                    transformOrigin={{
+                      vertical: 'top',
+                      horizontal: 'left',
+                    }}
+                  >
+                    {getPagePermissions('report').canView && (
+                      <MenuItem component={Link} to="/report" onClick={handleFinancialReportsClose}>
+                        Report
+                      </MenuItem>
+                    )}
+                    {getPagePermissions('glidepath').canView && (
+                      <MenuItem component={Link} to="/glidepath" onClick={handleFinancialReportsClose}>
+                        Budget
+                      </MenuItem>
+                    )}
+                  </Menu>
+                </>
+              ) : null}
               {getPagePermissions('payments').canView && (
                 <Button component={Link} to="/payments" color="inherit" sx={{ textTransform: 'none', fontSize: '0.8rem', border: '1px solid rgba(255, 255, 255, 0.5)', '&:hover': { border: '1px solid white' }, minHeight: '40px', display: 'flex', alignItems: 'center', backgroundColor: location.pathname === '/payments' ? 'rgba(255, 255, 255, 0.2)' : 'transparent', boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)' }}>Payments</Button>
               )}
